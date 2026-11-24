@@ -4,7 +4,6 @@ This fork packages [Zelda64 Recompiled](https://github.com/Zelda64Recomp/Zelda64
 
 ## Known Beta Notes
 
-- App currently runs on AYN/Retroid style devices. I have NOT been able to tackle Samsung/Google specfic coding yet.
 - App seems to be compatible with Snapdragon/Adreno, except in Samsung's strict proprietary ecosystem - note this has largely to do with the core of RT64 upstream
 - This is an early Android beta and may still have device-specific Vulkan or driver issues.
 - I highly suggest using a Turnip Driver such as Mr Purple (https://github.com/MrPurple666/purple-turnip/releases)
