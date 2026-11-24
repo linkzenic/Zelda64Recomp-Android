@@ -45,20 +45,19 @@
 #include <xmmintrin.h>
 #define SLOT_MAP_ALLOC(sizeInBytes, alignment) _mm_malloc(sizeInBytes, alignment)
 #define SLOT_MAP_FREE(ptr) _mm_free(ptr)
-#elif defined(__ANDROID__)
-// Android API levels below 28 do not expose aligned_alloc.
-#include <stdlib.h>
-static inline void* slot_map_android_aligned_alloc(size_t sizeInBytes, size_t alignment)
-{
-    void* ptr = nullptr;
-    return posix_memalign(&ptr, alignment, sizeInBytes) == 0 ? ptr : nullptr;
-}
-#define SLOT_MAP_ALLOC(sizeInBytes, alignment) slot_map_android_aligned_alloc(sizeInBytes, alignment)
-#define SLOT_MAP_FREE(ptr) free(ptr)
 #else
 // Posix
 #include <stdlib.h>
+#if defined(__ANDROID__)
+inline void* slotMapAlignedAlloc(size_t sizeInBytes, size_t alignment)
+{
+    void* memory = nullptr;
+    return posix_memalign(&memory, alignment, sizeInBytes) == 0 ? memory : nullptr;
+}
+#define SLOT_MAP_ALLOC(sizeInBytes, alignment) slotMapAlignedAlloc(sizeInBytes, alignment)
+#else
 #define SLOT_MAP_ALLOC(sizeInBytes, alignment) aligned_alloc(alignment, sizeInBytes)
+#endif
 #define SLOT_MAP_FREE(ptr) free(ptr)
 #endif
 

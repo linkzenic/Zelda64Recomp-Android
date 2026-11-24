@@ -8,6 +8,13 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <iomanip>
+#include <cstdlib>
+#include <initializer_list>
+#include <atomic>
+#include <unordered_set>
+#include <cmath>
+#include <string_view>
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -28,19 +35,21 @@
 
 #include "recomp_ui.h"
 #include "recomp_input.h"
+#include "librecomp/mods.hpp"
 #include "librecomp/game.hpp"
 #include "zelda_config.h"
+#include "zelda_clock_overlay.h"
 #include "zelda_support.h"
 #include "ui_rml_hacks.hpp"
 #include "ui_elements.h"
 #include "ui_mod_menu.h"
 #include "ui_mod_installer.h"
 #include "ui_renderer.h"
+#include "../../lib/rt64/src/contrib/stb/stb_image.h"
 
 bool can_focus(Rml::Element* element) {
     return element->GetOwnerDocument() != nullptr && element->GetProperty(Rml::PropertyId::TabIndex)->Get<Rml::Style::TabIndex>() != Rml::Style::TabIndex::None;
 }
-
 //! Copied from lib\RmlUi\Source\Core\Elements\ElementLabel.cpp
 // Get the first descending element whose tag name matches one of tags.
 static Rml::Element* TagMatchRecursive(const Rml::StringList& tags, Rml::Element* element)
@@ -165,12 +174,22 @@ struct ContextDetails {
     Rml::ElementDocument* document;
 };
 
+inline std::vector<char> read_file_to_bytes(std::filesystem::path path);
+
 class UIState {
     Rml::Element* prev_focused = nullptr;
     bool mouse_is_active_changed = false;
     std::unique_ptr<recompui::MenuController> launcher_menu_controller{};
     std::unique_ptr<recompui::MenuController> config_menu_controller{};
     std::vector<ContextDetails> shown_contexts{};
+    recompui::ContextId clock_overlay_context = recompui::ContextId::null();
+    recompui::ContextId pause_save_prompt_overlay_context = recompui::ContextId::null();
+    std::string clock_overlay_markup;
+    std::string pause_save_prompt_overlay_markup;
+    std::atomic_bool clock_texture_reload_requested = false;
+    bool clock_sun_hour_loaded = false;
+    bool clock_moon_hour_loaded = false;
+    bool clock_final_moon_loaded = false;
 public:
     bool mouse_is_active_initialized = false;
     bool mouse_is_active = false;
@@ -183,6 +202,7 @@ public:
     std::unique_ptr<SystemInterface_SDL> system_interface;
     recompui::RmlRenderInterface_RT64 render_interface;
     Rml::Context* context;
+    bool debugger_initialized = false;
     recompui::UiEventListenerInstancer event_listener_instancer;
 
     UIState(const UIState& rhs) = delete;
@@ -198,6 +218,7 @@ public:
         system_interface = std::make_unique<SystemInterface_SDL>();
         system_interface->SetWindow(window);
         render_interface.init(interface, device);
+        load_launcher_images();
         ZELDA_UI_LOG("render interface initialized");
 
         launcher_menu_controller->register_events(event_listener_instancer);
@@ -223,7 +244,16 @@ public:
         launcher_menu_controller->make_bindings(context);
         config_menu_controller->make_bindings(context);
 
-        Rml::Debugger::Initialise(context);
+#if defined(ZELDA_ENABLE_RML_DEBUGGER) && !defined(__ANDROID__)
+        if (!recomp::android_should_use_sync_boot_dma()) {
+            Rml::Debugger::Initialise(context);
+            debugger_initialized = true;
+        } else {
+            ZELDA_UI_LOG("Rml debugger skipped for Samsung sync boot path");
+        }
+#else
+        ZELDA_UI_LOG("Rml debugger skipped");
+#endif
         {
             struct FontFace {
                 const char* filename;
@@ -259,6 +289,8 @@ public:
         ZELDA_UI_LOG("config document loaded");
         recompui::init_prompt_context();
         ZELDA_UI_LOG("prompt context initialized");
+        create_clock_overlay_context();
+        create_pause_save_prompt_overlay_context();
     }
 
     void unload() {
@@ -422,6 +454,561 @@ public:
         return !shown_contexts.empty();
     }
 
+    static const std::vector<std::pair<const char*, const char*>>& clock_image_resources() {
+        static const std::vector<std::pair<const char*, const char*>> clock_images = {
+            {"clock3ds_edge", "clock_3ds/gThreeDayClock3DSEdgeTex.ia8.png"},
+            {"clock3ds_edge_right", "clock_3ds/gThreeDayClock3DSEdgeRightTex.ia8.png"},
+            {"clock3ds_middle", "clock_3ds/gThreeDayClock3DSMiddleTex.ia8.png"},
+            {"clock3ds_fill", "clock_3ds/gThreeDayClock3DSFillTex.ia8.png"},
+            {"clock3ds_backdrop", "clock_3ds/gThreeDayClock3DSTimeBackdropTex.ia8.png"},
+            {"clock3ds_arrow", "clock_3ds/gThreeDayClock3DSArrowTex.ia8.png"},
+            {"clock3ds_slow", "clock_3ds/gThreeDayClock3DSSlowTimeTex.ia8.png"},
+            {"clock3ds_final_moon", "clock_3ds/gThreeDayClock3DSFinalHoursMoonTex.ia8.png"},
+            {"clock3ds_sun_hour", "clock_3ds/gThreeDayClockSunHourTex.ia8.png"},
+            {"clock3ds_moon_hour", "clock_3ds/gThreeDayClockMoonHourTex.ia8.png"},
+            {"clock3ds_colon", "clock_3ds/gThreeDayClock3DSFinalHoursColonTex.ia8.png"},
+            {"clock3ds_digit0", "clock_3ds/gThreeDayClock3DSFinalHoursDigit0Tex.ia8.png"},
+            {"clock3ds_digit1", "clock_3ds/gThreeDayClock3DSFinalHoursDigit1Tex.ia8.png"},
+            {"clock3ds_digit2", "clock_3ds/gThreeDayClock3DSFinalHoursDigit2Tex.ia8.png"},
+            {"clock3ds_digit3", "clock_3ds/gThreeDayClock3DSFinalHoursDigit3Tex.ia8.png"},
+            {"clock3ds_digit4", "clock_3ds/gThreeDayClock3DSFinalHoursDigit4Tex.ia8.png"},
+            {"clock3ds_digit5", "clock_3ds/gThreeDayClock3DSFinalHoursDigit5Tex.ia8.png"},
+            {"clock3ds_digit6", "clock_3ds/gThreeDayClock3DSFinalHoursDigit6Tex.ia8.png"},
+            {"clock3ds_digit7", "clock_3ds/gThreeDayClock3DSFinalHoursDigit7Tex.ia8.png"},
+            {"clock3ds_digit8", "clock_3ds/gThreeDayClock3DSFinalHoursDigit8Tex.ia8.png"},
+            {"clock3ds_digit9", "clock_3ds/gThreeDayClock3DSFinalHoursDigit9Tex.ia8.png"},
+        };
+        return clock_images;
+    }
+
+    void load_launcher_images() {
+        auto asset_path = zelda64::get_asset_path("launcher-mask.png");
+        if (std::filesystem::exists(asset_path)) {
+            const std::vector<char> image_bytes = read_file_to_bytes(asset_path);
+            int width = 0;
+            int height = 0;
+            int channels = 0;
+            stbi_uc* decoded = stbi_load_from_memory(
+                reinterpret_cast<const stbi_uc*>(image_bytes.data()),
+                static_cast<int>(image_bytes.size()),
+                &width,
+                &height,
+                &channels,
+                4);
+
+            if (decoded != nullptr && width > 0 && height > 0) {
+                std::vector<char> rgba(
+                    reinterpret_cast<const char*>(decoded),
+                    reinterpret_cast<const char*>(decoded) + (static_cast<size_t>(width) * static_cast<size_t>(height) * 4));
+                ZELDA_UI_LOG("Launcher background decoded %dx%d", width, height);
+                render_interface.queue_image_from_bytes_rgba32(
+                    "launcher_background",
+                    rgba,
+                    static_cast<uint32_t>(width),
+                    static_cast<uint32_t>(height));
+                stbi_image_free(decoded);
+            }
+            else {
+                ZELDA_UI_LOG("Launcher background decode failed: %s", stbi_failure_reason());
+                render_interface.queue_image_from_bytes_file("launcher_background", image_bytes);
+            }
+        }
+    }
+
+    void load_clock_overlay_images() {
+        const auto& clock_images = clock_image_resources();
+        std::unordered_set<std::string> loaded_clock_images;
+        clock_sun_hour_loaded = false;
+        clock_moon_hour_loaded = false;
+        clock_final_moon_loaded = false;
+
+        for (const auto& [name, _] : clock_images) {
+            recompui::release_image(name);
+        }
+
+        const auto read_le32 = [](const std::vector<char>& bytes, size_t offset) -> uint32_t {
+            if (offset + 4 > bytes.size()) {
+                return 0;
+            }
+            return static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset])) |
+                (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8) |
+                (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 2])) << 16) |
+                (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 3])) << 24);
+        };
+
+        const auto tint_hour_icon = [](std::vector<char>& rgba, const char* src) {
+            const bool sun_icon = std::string_view{src} == "clock3ds_sun_hour";
+            const bool moon_icon = std::string_view{src} == "clock3ds_moon_hour";
+            if (!sun_icon && !moon_icon) {
+                return;
+            }
+
+            const unsigned char tint_r = 200;
+            const unsigned char tint_g = sun_icon ? 0 : 200;
+            const unsigned char tint_b = 0;
+            for (size_t i = 0; i + 3 < rgba.size(); i += 4) {
+                const unsigned char red = static_cast<unsigned char>(rgba[i + 0]);
+                const unsigned char green = static_cast<unsigned char>(rgba[i + 1]);
+                const unsigned char blue = static_cast<unsigned char>(rgba[i + 2]);
+                const unsigned char intensity = static_cast<unsigned char>((static_cast<unsigned int>(red) + green + blue) / 3);
+                rgba[i + 0] = static_cast<char>((static_cast<unsigned int>(tint_r) * intensity) / 255);
+                rgba[i + 1] = static_cast<char>((static_cast<unsigned int>(tint_g) * intensity) / 255);
+                rgba[i + 2] = static_cast<char>((static_cast<unsigned int>(tint_b) * intensity) / 255);
+            }
+        };
+
+        const auto queue_o2r_texture = [&](const recomp::mods::ZipModFileHandle& handle, const char* src, const char* entry_path, bool flip_x = false) -> bool {
+            bool exists = false;
+            std::vector<char> bytes = handle.read_file(entry_path, exists);
+            if (!exists || bytes.size() < 92) {
+                return false;
+            }
+
+            constexpr size_t OtrHeaderSize = 64;
+            constexpr size_t TextureDataOffset = 92;
+            const uint32_t width = read_le32(bytes, OtrHeaderSize + 4);
+            const uint32_t height = read_le32(bytes, OtrHeaderSize + 8);
+            const uint32_t image_data_size = read_le32(bytes, OtrHeaderSize + 24);
+            const uint64_t texel_count = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
+            const uint64_t expected_rgba32_size = texel_count * 4;
+            const uint64_t expected_ia8_size = texel_count * 2;
+            if (width == 0 || height == 0 ||
+                (image_data_size != expected_rgba32_size && image_data_size != expected_ia8_size) ||
+                TextureDataOffset + image_data_size > bytes.size()) {
+                ZELDA_UI_LOG("Clock texture pack entry rejected: %s", entry_path);
+                return false;
+            }
+
+            std::vector<char> rgba;
+            if (image_data_size == expected_rgba32_size) {
+                rgba.assign(bytes.begin() + TextureDataOffset, bytes.begin() + TextureDataOffset + image_data_size);
+            }
+            else {
+                rgba.resize(static_cast<size_t>(texel_count) * 4);
+                const unsigned char* ia = reinterpret_cast<const unsigned char*>(bytes.data() + TextureDataOffset);
+                for (size_t i = 0; i < static_cast<size_t>(texel_count); i++) {
+                    const unsigned char intensity = ia[i * 2 + 0];
+                    const unsigned char alpha = ia[i * 2 + 1];
+                    rgba[i * 4 + 0] = static_cast<char>(intensity);
+                    rgba[i * 4 + 1] = static_cast<char>(intensity);
+                    rgba[i * 4 + 2] = static_cast<char>(intensity);
+                    rgba[i * 4 + 3] = static_cast<char>(alpha);
+                }
+            }
+            if (flip_x) {
+                const size_t row_stride = static_cast<size_t>(width) * 4;
+                for (uint32_t y = 0; y < height; y++) {
+                    char* row = rgba.data() + static_cast<size_t>(y) * row_stride;
+                    for (uint32_t x = 0; x < width / 2; x++) {
+                        char* left = row + static_cast<size_t>(x) * 4;
+                        char* right = row + static_cast<size_t>(width - 1 - x) * 4;
+                        for (int c = 0; c < 4; c++) {
+                            std::swap(left[c], right[c]);
+                        }
+                    }
+                }
+            }
+            tint_hour_icon(rgba, src);
+            recompui::queue_image_from_bytes_rgba32(src, rgba, width, height);
+            loaded_clock_images.emplace(src);
+            return true;
+        };
+
+        const auto queue_first_o2r_texture = [&](const recomp::mods::ZipModFileHandle& handle, const char* src, std::initializer_list<const char*> entry_paths, bool flip_x = false) -> bool {
+            for (const char* entry_path : entry_paths) {
+                if (queue_o2r_texture(handle, src, entry_path, flip_x)) {
+                    return true;
+                }
+            }
+            ZELDA_UI_LOG("Clock texture pack missing: %s", src);
+            return false;
+        };
+
+        const auto queue_generated_hour_icon = [&](const char* src, bool night) {
+            constexpr uint32_t width = 64;
+            constexpr uint32_t height = 64;
+            std::vector<char> rgba(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
+            const float cx = 31.5f;
+            const float cy = 31.5f;
+            const float radius = 22.0f;
+            for (uint32_t y = 0; y < height; y++) {
+                for (uint32_t x = 0; x < width; x++) {
+                    const float dx = static_cast<float>(x) - cx;
+                    const float dy = static_cast<float>(y) - cy;
+                    const float dist = std::sqrt(dx * dx + dy * dy);
+                    float alpha = 0.0f;
+                    unsigned char red = 245;
+                    unsigned char green = 215;
+                    unsigned char blue = 64;
+                    if (dist <= radius) {
+                        alpha = dist >= radius - 2.0f ? 190.0f : 255.0f;
+                        if (!night) {
+                            red = 246;
+                            green = 165;
+                            blue = 36;
+                        }
+                    }
+                    if (night) {
+                        const float shadow_dx = static_cast<float>(x) - (cx + 8.0f);
+                        const float shadow_dy = static_cast<float>(y) - (cy - 1.0f);
+                        const float shadow_dist = std::sqrt(shadow_dx * shadow_dx + shadow_dy * shadow_dy);
+                        if (shadow_dist <= radius - 2.0f) {
+                            alpha = 0.0f;
+                        }
+                    }
+                    const size_t pixel = (static_cast<size_t>(y) * width + x) * 4;
+                    rgba[pixel + 0] = static_cast<char>(red);
+                    rgba[pixel + 1] = static_cast<char>(green);
+                    rgba[pixel + 2] = static_cast<char>(blue);
+                    rgba[pixel + 3] = static_cast<char>(static_cast<unsigned char>(std::max(0.0f, std::min(255.0f, alpha))));
+                }
+            }
+            recompui::queue_image_from_bytes_rgba32(src, rgba, width, height);
+            loaded_clock_images.emplace(src);
+        };
+
+        const auto load_o2r_clock_textures = [&]() -> bool {
+            if (zelda64::get_clock_style() != zelda64::ClockStyle::Import) {
+                return false;
+            }
+
+            const char* pack_path = std::getenv("APP_CLOCK_TEXTURE_PACK_PATH");
+            if (pack_path == nullptr || pack_path[0] == '\0') {
+                return false;
+            }
+
+            recomp::mods::ModOpenError open_error = recomp::mods::ModOpenError::Good;
+            recomp::mods::ZipModFileHandle handle{std::filesystem::path{pack_path}, open_error};
+            if (open_error != recomp::mods::ModOpenError::Good) {
+                ZELDA_UI_LOG("Clock texture pack failed to open: %s", pack_path);
+                return false;
+            }
+
+            bool loaded_any = false;
+            for (const auto& [name, _] : clock_images) {
+                std::string resource_name{name};
+                if (resource_name.rfind("clock3ds_digit", 0) == 0) {
+                    const char digit = resource_name.back();
+                    std::string path = "alt/textures/parameter_static/gThreeDayClock3DSFinalHoursDigit";
+                    path.push_back(digit);
+                    path += "Tex";
+                    loaded_any |= queue_o2r_texture(handle, name, path.c_str());
+                }
+            }
+
+            loaded_any |= queue_o2r_texture(handle, "clock3ds_edge", "alt/textures/parameter_static/gThreeDayClock3DSEdgeTex");
+            loaded_any |= queue_o2r_texture(handle, "clock3ds_edge_right", "alt/textures/parameter_static/gThreeDayClock3DSEdgeTex", true);
+            loaded_any |= queue_o2r_texture(handle, "clock3ds_middle", "alt/textures/parameter_static/gThreeDayClock3DSMiddleTex");
+            loaded_any |= queue_o2r_texture(handle, "clock3ds_fill", "alt/textures/parameter_static/gThreeDayClock3DSFillTex");
+            loaded_any |= queue_o2r_texture(handle, "clock3ds_backdrop", "alt/textures/parameter_static/gThreeDayClock3DSTimeBackdropTex");
+            loaded_any |= queue_o2r_texture(handle, "clock3ds_arrow", "alt/textures/parameter_static/gThreeDayClock3DSArrowTex");
+            loaded_any |= queue_o2r_texture(handle, "clock3ds_slow", "alt/textures/parameter_static/gThreeDayClock3DSSlowTimeTex");
+            clock_final_moon_loaded = queue_first_o2r_texture(handle, "clock3ds_final_moon", {
+                "alt/textures/parameter_static/gThreeDayClock3DSFinalHoursMoonTex",
+                "textures/parameter_static/gThreeDayClock3DSFinalHoursMoonTex",
+            });
+            loaded_any |= clock_final_moon_loaded;
+            clock_sun_hour_loaded = queue_first_o2r_texture(handle, "clock3ds_sun_hour", {
+                "alt/textures/parameter_static/gThreeDayClockSunHourTex",
+                "alt/textures/parameter_static/gThreeDayClock3DSSunHourTex",
+                "alt/parameter_static/gThreeDayClockSunHourTex",
+                "alt/parameter_static/gThreeDayClock3DSSunHourTex",
+                "textures/parameter_static/gThreeDayClockSunHourTex",
+                "textures/parameter_static/gThreeDayClock3DSSunHourTex",
+            });
+            loaded_any |= clock_sun_hour_loaded;
+            clock_moon_hour_loaded = queue_first_o2r_texture(handle, "clock3ds_moon_hour", {
+                "alt/textures/parameter_static/gThreeDayClockMoonHourTex",
+                "alt/textures/parameter_static/gThreeDayClock3DSMoonHourTex",
+                "alt/parameter_static/gThreeDayClockMoonHourTex",
+                "alt/parameter_static/gThreeDayClock3DSMoonHourTex",
+                "textures/parameter_static/gThreeDayClockMoonHourTex",
+                "textures/parameter_static/gThreeDayClock3DSMoonHourTex",
+            });
+            loaded_any |= clock_moon_hour_loaded;
+            loaded_any |= queue_o2r_texture(handle, "clock3ds_colon", "alt/textures/parameter_static/gThreeDayClock3DSFinalHoursColonTex");
+            if (loaded_any) {
+                ZELDA_UI_LOG("Clock texture pack loaded: %s", pack_path);
+            }
+            return loaded_any;
+        };
+
+        const bool imported_clock_textures_loaded = load_o2r_clock_textures();
+        zelda64::set_clock_texture_pack_loaded(imported_clock_textures_loaded);
+
+        for (const auto& [name, path] : clock_images) {
+            if (path[0] == '\0' || loaded_clock_images.contains(name)) {
+                continue;
+            }
+            auto asset_path = zelda64::get_asset_path(path);
+            if (std::filesystem::exists(asset_path)) {
+                recompui::queue_image_from_bytes_file(name, read_file_to_bytes(asset_path));
+                loaded_clock_images.emplace(name);
+                if (std::string_view{name} == "clock3ds_sun_hour") {
+                    clock_sun_hour_loaded = true;
+                }
+                else if (std::string_view{name} == "clock3ds_moon_hour") {
+                    clock_moon_hour_loaded = true;
+                }
+            }
+        }
+
+        if (!clock_sun_hour_loaded) {
+            queue_generated_hour_icon("clock3ds_sun_hour", false);
+            clock_sun_hour_loaded = true;
+        }
+        if (!clock_moon_hour_loaded) {
+            queue_generated_hour_icon("clock3ds_moon_hour", true);
+            clock_moon_hour_loaded = true;
+        }
+    }
+
+    void create_clock_overlay_context() {
+        clock_overlay_context = recompui::create_context();
+        clock_overlay_context.set_captures_input(false);
+        clock_overlay_context.set_captures_mouse(false);
+        load_clock_overlay_images();
+    }
+
+    void create_pause_save_prompt_overlay_context() {
+        pause_save_prompt_overlay_context = recompui::create_context();
+        pause_save_prompt_overlay_context.set_captures_input(false);
+        pause_save_prompt_overlay_context.set_captures_mouse(false);
+    }
+
+    void hide_pause_save_prompt_overlay() {
+        pause_save_prompt_overlay_markup.clear();
+        if (pause_save_prompt_overlay_context != recompui::ContextId::null()) {
+            pause_save_prompt_overlay_context.get_document()->SetInnerRML("");
+            if (is_context_shown(pause_save_prompt_overlay_context)) {
+                hide_context(pause_save_prompt_overlay_context);
+            }
+        }
+    }
+
+    void update_pause_save_prompt_overlay() {
+        if (is_context_capturing_input() || !ultramodern::is_game_started() ||
+            pause_save_prompt_overlay_context == recompui::ContextId::null()) {
+            hide_pause_save_prompt_overlay();
+            return;
+        }
+
+        zelda64::PauseSavePromptOverlayState state = zelda64::get_pause_save_prompt_overlay_state();
+        if (!state.visible || state.alpha <= 0) {
+            hide_pause_save_prompt_overlay();
+            return;
+        }
+
+        const int alpha = std::max(0, std::min(255, state.alpha));
+        const float opacity = alpha / 255.0f;
+        const bool saved = state.save_prompt_state >= 5 && state.save_prompt_state != 6;
+        const bool no_selected = state.prompt_choice != 0;
+
+        const auto append_text = [](std::ostringstream& stream, const char* text, float left, float top, float width,
+                                    float font_size) {
+            const auto append_layer = [&](const char* color, float x_offset, float y_offset) {
+                stream << "<div style=\"position:absolute; left:50%; top:" << std::fixed << std::setprecision(1)
+                       << (top + y_offset) << "dp; margin-left:" << (left + x_offset) << "dp; width:" << width
+                       << "dp; text-align:center; font-size:" << font_size << "dp; color:" << color << ";\">"
+                       << text << "</div>";
+            };
+            append_layer("rgba(0,0,0,230)", 3.0f, 3.0f);
+            append_layer("white", 0.0f, 0.0f);
+        };
+
+        std::ostringstream html;
+        html << "<div style=\"position:absolute; left:0; top:0; width:100%; height:100%; "
+                "font-family:Chiaro; font-weight:bold; pointer-events:none; opacity:"
+             << std::fixed << std::setprecision(3) << opacity << ";\">";
+
+        if (saved) {
+            append_text(html, "Save complete.", -260.0f, 454.0f, 520.0f, 54.0f);
+        }
+        else {
+            append_text(html, "Would you like to save?", -420.0f, 380.0f, 840.0f, 54.0f);
+            append_text(html, "Yes", -250.0f, 574.0f, 180.0f, 54.0f);
+            append_text(html, "No", 70.0f, 574.0f, 180.0f, 54.0f);
+        }
+
+        append_text(html, "to decide", -86.0f, 918.0f, 300.0f, 42.0f);
+        html << "</div>";
+
+        std::string new_markup = html.str();
+        if (new_markup != pause_save_prompt_overlay_markup) {
+            pause_save_prompt_overlay_markup = std::move(new_markup);
+            pause_save_prompt_overlay_context.get_document()->SetInnerRML(pause_save_prompt_overlay_markup);
+        }
+
+        if (!is_context_shown(pause_save_prompt_overlay_context)) {
+            show_context(pause_save_prompt_overlay_context);
+        }
+    }
+
+    void request_clock_texture_reload() {
+        clock_texture_reload_requested.store(true);
+    }
+
+    void update_clock_overlay() {
+        if (clock_texture_reload_requested.exchange(false)) {
+            recompui::refresh_clock_texture_pack_name();
+            load_clock_overlay_images();
+            clock_overlay_markup.clear();
+            if (clock_overlay_context != recompui::ContextId::null()) {
+                clock_overlay_context.get_document()->SetInnerRML("");
+            }
+        }
+
+        if (is_context_capturing_input()) {
+            if (clock_overlay_context != recompui::ContextId::null() && is_context_shown(clock_overlay_context)) {
+                hide_context(clock_overlay_context);
+            }
+            return;
+        }
+
+        const zelda64::ClockStyle clock_style = zelda64::get_clock_style();
+        const bool should_show =
+            ultramodern::is_game_started() &&
+            clock_style != zelda64::ClockStyle::Original &&
+            (clock_style != zelda64::ClockStyle::Import || zelda64::get_clock_texture_pack_loaded());
+
+        if (!should_show) {
+            if (clock_overlay_context != recompui::ContextId::null() && is_context_shown(clock_overlay_context)) {
+                hide_context(clock_overlay_context);
+            }
+            return;
+        }
+
+        zelda64::ClockOverlayState state = zelda64::get_clock_overlay_state();
+        if (!state.visible || state.alpha <= 0) {
+            if (clock_overlay_context != recompui::ContextId::null() && is_context_shown(clock_overlay_context)) {
+                hide_context(clock_overlay_context);
+            }
+            return;
+        }
+
+        if (clock_overlay_context == recompui::ContextId::null()) {
+            return;
+        }
+
+        const int alpha = std::max(0, std::min(255, state.alpha));
+        const float opacity = alpha / 255.0f;
+        const int day = std::max(1, std::min(3, state.day));
+        constexpr int SECONDS_IN_THREE_DAYS = 3 * 24 * 60 * 60;
+        constexpr int SECONDS_IN_SIX_HOURS = 6 * 60 * 60;
+        const int time_until_crash = std::max(0, std::min(SECONDS_IN_THREE_DAYS, state.time_until_crash_seconds));
+        const int elapsed_seconds = SECONDS_IN_THREE_DAYS - time_until_crash;
+        constexpr float clock_scale = 3.35f;
+        constexpr float section_width = 48.0f * clock_scale;
+        constexpr float section_half_width = 24.0f * clock_scale;
+        constexpr float clock_width = 192.0f * clock_scale;
+        constexpr float clock_height = 12.0f * clock_scale;
+        constexpr float time_box_width = 48.0f * clock_scale;
+        constexpr float time_box_height = 16.0f * clock_scale;
+        constexpr float bar_left = 0.0f;
+        constexpr float bar_top = 64.0f;
+        constexpr float day_band_top = 5.5f * clock_scale;
+        constexpr float day_band_height = 4.0f * clock_scale;
+        constexpr float day_band_inset = 1.5f * clock_scale;
+        constexpr float final_digit_size = 16.0f * clock_scale;
+        constexpr float time_digit_size = 7.4f * clock_scale;
+        constexpr float hour_icon_size = 12.0f * clock_scale;
+        constexpr float arrow_size = 8.0f * clock_scale;
+        const float arrow_offset = (static_cast<float>(elapsed_seconds) / SECONDS_IN_THREE_DAYS) * (section_width * 3.0f);
+        const float counter_x = section_half_width + arrow_offset;
+        const bool slow_time = state.time_speed_offset == -2;
+        const auto append_img = [](std::ostringstream& stream, const char* src, float left, float top, float width, float height) {
+            stream << "<img src=\"" << src << "\" style=\"position:absolute; left:" << std::fixed << std::setprecision(1) << left
+                   << "dp; top:" << top << "dp; width:" << width << "dp; height:" << height << "dp;\"></img>";
+        };
+        const auto append_digit = [&](std::ostringstream& stream, int digit, float left, float top, float size) {
+            digit = std::max(0, std::min(9, digit));
+            std::string src = "clock3ds_digit" + std::to_string(digit);
+            append_img(stream, src.c_str(), left, top, size, size);
+        };
+        std::ostringstream html;
+        html << "<div style=\"position:absolute; left:50%; bottom:30dp; margin-left:" << (-clock_width / 2.0f) << "dp; "
+                "width:" << clock_width << "dp; height:132dp; opacity:" << std::fixed << std::setprecision(3) << opacity << "; "
+                "font-family:Chiaro; pointer-events:none;\">"
+             << "<div style=\"position:absolute; left:" << bar_left << "dp; top:" << bar_top << "dp; width:" << clock_width << "dp; height:" << clock_height << "dp;\">"
+             << "<div style=\"position:absolute; left:" << (section_half_width + day_band_inset) << "dp; top:" << day_band_top << "dp; width:" << (section_width - day_band_inset * 2.0f) << "dp; height:" << day_band_height << "dp; "
+                "background-color:rgba(0,128,255," << (day <= 1 ? 175 : 52) << ");\"></div>"
+             << "<div style=\"position:absolute; left:" << (section_half_width + section_width + day_band_inset) << "dp; top:" << day_band_top << "dp; width:" << (section_width - day_band_inset * 2.0f) << "dp; height:" << day_band_height << "dp; "
+                "background-color:rgba(255,192,0," << (day == 2 ? 175 : 52) << ");\"></div>"
+             << "<div style=\"position:absolute; left:" << (section_half_width + section_width * 2.0f + day_band_inset) << "dp; top:" << day_band_top << "dp; width:" << (section_width - day_band_inset * 2.0f) << "dp; height:" << day_band_height << "dp; "
+                "background-color:rgba(255,64,0," << (day >= 3 ? 175 : 52) << ");\"></div>"
+             << "</div>";
+        append_img(html, "clock3ds_edge", 0.0f, bar_top, 72.0f * clock_scale, clock_height);
+        append_img(html, "clock3ds_middle", 72.0f * clock_scale, bar_top, section_width, clock_height);
+        append_img(html, "clock3ds_edge_right", (72.0f + 48.0f) * clock_scale, bar_top, 72.0f * clock_scale, clock_height);
+        append_img(html, "clock3ds_arrow", counter_x - (arrow_size / 2.0f), bar_top + 4.0f * clock_scale, arrow_size, arrow_size);
+
+        if (state.final_hours) {
+            int total_seconds = std::max(0, state.time_until_crash_seconds);
+            int hours = total_seconds / (60 * 60);
+            int minutes = (total_seconds / 60) % 60;
+            int seconds = total_seconds % 60;
+            const float digits_left = (clock_width - (8.0f * final_digit_size)) / 2.0f;
+            const float digits_top = 12.0f;
+            append_digit(html, hours / 10, digits_left, digits_top, final_digit_size);
+            append_digit(html, hours % 10, digits_left + final_digit_size * 0.85f, digits_top, final_digit_size);
+            append_img(html, "clock3ds_colon", digits_left + final_digit_size * 1.65f, digits_top, final_digit_size, final_digit_size);
+            append_digit(html, minutes / 10, digits_left + final_digit_size * 2.45f, digits_top, final_digit_size);
+            append_digit(html, minutes % 10, digits_left + final_digit_size * 3.30f, digits_top, final_digit_size);
+            append_img(html, "clock3ds_colon", digits_left + final_digit_size * 4.10f, digits_top, final_digit_size, final_digit_size);
+            append_digit(html, seconds / 10, digits_left + final_digit_size * 4.90f, digits_top, final_digit_size);
+            append_digit(html, seconds % 10, digits_left + final_digit_size * 5.75f, digits_top, final_digit_size);
+            append_img(html, "clock3ds_final_moon", (clock_width - final_digit_size) / 2.0f, digits_top - final_digit_size * 0.85f, final_digit_size, final_digit_size);
+        }
+        else {
+            int total_time = ((state.current_time_seconds % (24 * 60 * 60)) + (24 * 60 * 60)) % (24 * 60 * 60);
+            int hours24 = total_time / (60 * 60);
+            int minutes = (total_time / 60) % 60;
+            int hours12 = hours24 % 12;
+            if (hours12 == 0) {
+                hours12 = 12;
+            }
+            float time_box_left = std::max(0.0f, std::min(clock_width - time_box_width, counter_x - section_half_width));
+            const float time_box_top = bar_top - 8.0f * clock_scale;
+            const bool night = (hours24 < 6 || hours24 >= 18);
+            const char* hour_icon = night ? "clock3ds_moon_hour" : "clock3ds_sun_hour";
+            append_img(html, "clock3ds_backdrop", time_box_left, time_box_top, time_box_width, time_box_height);
+            if ((night && clock_moon_hour_loaded) || (!night && clock_sun_hour_loaded)) {
+                append_img(html, hour_icon, time_box_left + 5.0f * clock_scale, time_box_top + 2.0f * clock_scale, hour_icon_size, hour_icon_size);
+            }
+            const float digit_top = time_box_top + 4.0f * clock_scale;
+            const float time_digits_width = hours12 >= 10 ? time_digit_size * 3.75f : time_digit_size * 3.05f;
+            const float digit_left = time_box_left + (time_box_width - time_digits_width) * 0.58f;
+            if (hours12 >= 10) {
+                append_digit(html, hours12 / 10, digit_left, digit_top, time_digit_size);
+                append_digit(html, hours12 % 10, digit_left + time_digit_size * 0.72f, digit_top, time_digit_size);
+                append_img(html, "clock3ds_colon", digit_left + time_digit_size * 1.36f, digit_top, time_digit_size, time_digit_size);
+                append_digit(html, minutes / 10, digit_left + time_digit_size * 2.03f, digit_top, time_digit_size);
+                append_digit(html, minutes % 10, digit_left + time_digit_size * 2.75f, digit_top, time_digit_size);
+            }
+            else {
+                append_digit(html, hours12, digit_left, digit_top, time_digit_size);
+                append_img(html, "clock3ds_colon", digit_left + time_digit_size * 0.68f, digit_top, time_digit_size, time_digit_size);
+                append_digit(html, minutes / 10, digit_left + time_digit_size * 1.35f, digit_top, time_digit_size);
+                append_digit(html, minutes % 10, digit_left + time_digit_size * 2.07f, digit_top, time_digit_size);
+            }
+            if (slow_time) {
+                append_img(html, "clock3ds_slow", time_box_left + time_box_width - time_digit_size * 0.55f, time_box_top - 4.0f, time_digit_size, time_digit_size);
+            }
+        }
+
+        html << "</div>";
+
+        std::string new_markup = html.str();
+        if (new_markup != clock_overlay_markup) {
+            clock_overlay_markup = std::move(new_markup);
+            clock_overlay_context.get_document()->SetInnerRML(clock_overlay_markup);
+        }
+
+        if (!is_context_shown(clock_overlay_context)) {
+            show_context(clock_overlay_context);
+        }
+    }
+
     Rml::ElementDocument* top_input_document() {
         // Iterate backwards and stop at the first context that takes input.
         for (auto it = shown_contexts.rbegin(); it != shown_contexts.rend(); it++) {
@@ -466,6 +1053,14 @@ inline const std::string read_file_to_string(std::filesystem::path path) {
     std::ostringstream ss;
     ss << stream.rdbuf();
     return ss.str(); 
+}
+
+inline std::vector<char> read_file_to_bytes(std::filesystem::path path) {
+    std::ifstream stream{ path, std::ios::binary };
+    return std::vector<char>{
+        std::istreambuf_iterator<char>{ stream },
+        std::istreambuf_iterator<char>{}
+    };
 }
 
 void init_hook(RT64::RenderInterface* interface, RT64::RenderDevice* device) {
@@ -673,7 +1268,7 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
                 non_mouse_interacted = true;
                 kb_interacted = true;
                 if (cur_event.key.keysym.scancode == SDL_Scancode::SDL_SCANCODE_F8) {
-                    if (zelda64::get_debug_mode_enabled()) {
+                    if (zelda64::get_debug_mode_enabled() && ui_state->debugger_initialized) {
                         Rml::Debugger::SetVisible(!Rml::Debugger::IsVisible());
                     }
                 }
@@ -781,6 +1376,8 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
 
     ui_state->update_primary_input(mouse_moved, non_mouse_interacted);
     ui_state->update_focus(mouse_moved, non_mouse_interacted);
+    ui_state->update_clock_overlay();
+    ui_state->update_pause_save_prompt_overlay();
 
     if (recompui::is_any_context_shown()) {
         ui_state->update_contexts();
@@ -794,6 +1391,8 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
         // Scale the UI based on the window size with 1080 vertical resolution as the reference point.
         ui_state->context->SetDensityIndependentPixelRatio((height) / 1080.0f);
 
+        const bool show_launcher_background = !ultramodern::is_game_started();
+        ui_state->render_interface.set_launcher_background_visible(show_launcher_background);
         ui_state->render_interface.start(command_list, width, height);
 
         static int prev_width = 0;
@@ -806,6 +1405,9 @@ void draw_hook(RT64::RenderCommandList* command_list, RT64::RenderFramebuffer* s
         prev_height = height;
 
         ui_state->context->Update();
+        if (show_launcher_background) {
+            ui_state->render_interface.render_launcher_background();
+        }
         ui_state->context->Render();
         ui_state->render_interface.end(command_list, swap_chain_framebuffer);
     }
@@ -815,7 +1417,9 @@ void deinit_hook() {
     recompui::destroy_all_contexts();
 
     std::lock_guard lock {ui_state_mutex};
-    Rml::Debugger::Shutdown();
+    if (ui_state && ui_state->debugger_initialized) {
+        Rml::Debugger::Shutdown();
+    }
     Rml::Shutdown();
     ui_state->unload();
     ui_state.reset();
@@ -921,6 +1525,12 @@ bool recompui::is_any_context_shown() {
     return ui_state->is_any_context_shown();
 }
 
+#if defined(__ANDROID__)
+extern "C" bool zelda64_android_is_ui_capturing_touch() {
+    return recompui::is_context_capturing_mouse() || !ultramodern::is_game_started();
+}
+#endif
+
 Rml::ElementDocument* recompui::load_document(const std::filesystem::path& path) {
     std::lock_guard lock{ui_state_mutex};
 
@@ -943,6 +1553,14 @@ void recompui::queue_image_from_bytes_rgba32(const std::string &src, const std::
 
 void recompui::release_image(const std::string &src) {
     Rml::ReleaseTexture(src);
+}
+
+void recompui::request_clock_texture_reload() {
+    std::lock_guard lock{ui_state_mutex};
+
+    if (ui_state) {
+        ui_state->request_clock_texture_reload();
+    }
 }
 
 void recompui::drop_files(const std::list<std::filesystem::path> &file_list) {

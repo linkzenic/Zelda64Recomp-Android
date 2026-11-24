@@ -70,6 +70,9 @@ namespace recomp {
     };
 
     void poll_inputs();
+#if defined(__ANDROID__)
+    bool uses_odin_face_button_glyphs();
+#endif
     float get_input_analog(const InputField& field);
     float get_input_analog(const std::span<const recomp::InputField> fields);
     bool get_input_digital(const InputField& field);

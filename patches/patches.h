@@ -4,6 +4,9 @@
 #define RECOMP_EXPORT __attribute__((section(".recomp_export")))
 #define RECOMP_PATCH __attribute__((section(".recomp_patch")))
 #define RECOMP_FORCE_PATCH __attribute__((section(".recomp_force_patch")))
+#define RECOMP_CALLBACK(mod, event)
+#define RECOMP_HOOK(func)
+#define RECOMP_HOOK_RETURN(func)
 #define RECOMP_DECLARE_EVENT(func) \
     _Pragma("GCC diagnostic push") \
     _Pragma("GCC diagnostic ignored \"-Wunused-parameter\"") \
@@ -71,6 +74,11 @@
 
 int recomp_printf(const char* fmt, ...);
 float recomp_powf(float, float);
+int recomp_get_clock_style(void);
+void recomp_set_3ds_clock_state(int visible, int alpha, int day, int current_time_seconds,
+                                int time_until_crash_seconds, int time_speed_offset, int final_hours);
+int recomp_get_clock_texture_pack_loaded(void);
+int recomp_should_use_3ds_clock_overlay(void);
 
 typedef enum {
     /* 0 */ PICTO_BOX_STATE_OFF,         // Not using the pictograph

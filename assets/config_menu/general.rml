@@ -106,208 +106,381 @@
                                 type="range"
                                 min="0"
                                 max="100"
-                                style="flex: 1; margin: 0dp; nav-down: #bg_input_enabled"
+                                style="flex: 1; margin: 0dp; nav-down: #touch_style_classic"
                                 data-value="joystick_deadzone"
                             />
                         </div>
                     </div>
 
-                    <!-- background input -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(5)" id="conf-general__Background-Input">
-                        <label class="config-option__title">Background Input</label>
+                    <!-- Linkzenic integrated touch controller -->
+                    <div data-if="is_android" class="config-option" data-event-mouseover="set_cur_config_index(17)">
+                        <label class="config-option__title">Touch Controller Style</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(5)"
-                                name="background_input_mode"
-                                data-checked="background_input_mode"
-                                value="On"
-                                id="bg_input_enabled"
-                                style="nav-up: #joystick_deadzone_input; nav-down: #autosave_enabled"
+                                data-event-focus="set_cur_config_index(17)"
+                                name="touch-controller-style"
+                                data-checked="integrated_touch_style"
+                                value="Classic"
+                                id="touch_style_classic"
+                                style="nav-up: #joystick_deadzone_input; nav-down: #integrated_touch_scale_input"
                             />
-                            <label class="config-option__tab-label" for="bg_input_enabled">On</label>
+                            <label class="config-option__tab-label" for="touch_style_classic">Classic</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(5)"
-                                name="background_input_mode"
-                                data-checked="background_input_mode"
-                                value="Off"
-                                id="bg_input_disabled"
-                                style="nav-up: #joystick_deadzone_input; nav-down: #autosave_disabled"
+                                data-event-focus="set_cur_config_index(17)"
+                                name="touch-controller-style"
+                                data-checked="integrated_touch_style"
+                                value="N64"
+                                id="touch_style_n64"
+                                style="nav-up: #joystick_deadzone_input; nav-down: #integrated_touch_scale_input"
                             />
-                            <label class="config-option__tab-label" for="bg_input_disabled">Off</label>
+                            <label class="config-option__tab-label" for="touch_style_n64">N64</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(17)"
+                                name="touch-controller-style"
+                                data-checked="integrated_touch_style"
+                                value="GameCube"
+                                id="touch_style_gamecube"
+                                style="nav-up: #joystick_deadzone_input; nav-down: #integrated_touch_scale_input"
+                            />
+                            <label class="config-option__tab-label" for="touch_style_gamecube">GameCube</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(17)"
+                                name="touch-controller-style"
+                                data-checked="integrated_touch_style"
+                                value="Modern"
+                                id="touch_style_modern"
+                                style="nav-up: #joystick_deadzone_input; nav-down: #integrated_touch_scale_input"
+                            />
+                            <label class="config-option__tab-label" for="touch_style_modern">Modern</label>
                         </div>
+                    </div>
+
+                    <div data-if="is_android" class="config-option" data-event-mouseover="set_cur_config_index(18)">
+                        <label class="config-option__title">Touch Control Size</label>
+                        <div class="config-option__range-wrapper config-option__list">
+                            <label class="config-option__range-label">{{integrated_touch_scale}}%</label>
+                            <input
+                                class="nav-vert"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(18)"
+                                id="integrated_touch_scale_input"
+                                type="range"
+                                min="75"
+                                max="150"
+                                style="flex: 1; margin: 0dp; nav-up: #touch_style_classic; nav-down: #integrated_touch_opacity_input"
+                                data-value="integrated_touch_scale"
+                            />
+                        </div>
+                    </div>
+
+                    <div data-if="is_android" class="config-option" data-event-mouseover="set_cur_config_index(19)">
+                        <label class="config-option__title">Touch Control Opacity</label>
+                        <div class="config-option__range-wrapper config-option__list">
+                            <label class="config-option__range-label">{{integrated_touch_opacity}}%</label>
+                            <input
+                                class="nav-vert"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(19)"
+                                id="integrated_touch_opacity_input"
+                                type="range"
+                                min="15"
+                                max="100"
+                                style="flex: 1; margin: 0dp; nav-up: #integrated_touch_scale_input; nav-down: #edit_integrated_touch_layout"
+                                data-value="integrated_touch_opacity"
+                            />
+                        </div>
+                    </div>
+
+                    <div data-if="is_android" class="config-option" data-event-mouseover="set_cur_config_index(20)">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-event-click="edit_integrated_touch_layout"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(20)"
+                            id="edit_integrated_touch_layout"
+                            style="nav-up: #integrated_touch_opacity_input; nav-down: #dpad_items_toggle"
+                        >
+                            <div class="config-option__wide-toggle-title">Edit Touch Layout</div>
+                            <div class="config-option__wide-toggle-value">OPEN</div>
+                        </button>
+                    </div>
+
+                    <!-- d-pad items -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(5)" id="conf-general__DPad-Items">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-class-config-option__wide-toggle--on="dpad_items_enabled"
+                            data-event-click="toggle_dpad_items_mode"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(5)"
+                            id="dpad_items_toggle"
+                            style="nav-up: #edit_integrated_touch_layout; nav-down: #bg_input_toggle"
+                        >
+                            <div class="config-option__wide-toggle-title">D-Pad Items</div>
+                            <div class="config-option__wide-toggle-value">{{dpad_items_mode}}</div>
+                        </button>
+                    </div>
+
+                    <!-- background input -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(6)" id="conf-general__Background-Input">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-class-config-option__wide-toggle--on="background_input_mode == 'On'"
+                            data-event-click="toggle_background_input_mode"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(6)"
+                            id="bg_input_toggle"
+                            style="nav-up: #dpad_items_toggle; nav-down: #autosave_toggle"
+                        >
+                            <div class="config-option__wide-toggle-title">Background Input</div>
+                            <div class="config-option__wide-toggle-value">{{background_input_mode}}</div>
+                        </button>
                     </div>
 
                     <!-- autosave -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(6)">
-                        <label class="config-option__title">Autosaving</label>
-                        <div class="config-option__list">
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(6)"
-                                name="autosave_mode"
-                                data-checked="autosave_mode"
-                                value="On"
-                                id="autosave_enabled"
-                                style="nav-up: #bg_input_enabled; nav-down: #camera_inversion_none"
-                            />
-                            <label class="config-option__tab-label" for="autosave_enabled">On</label>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-class-config-option__wide-toggle--on="autosave_mode == 'On'"
+                            data-event-click="toggle_autosave_mode"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(7)"
+                            id="autosave_toggle"
+                            style="nav-up: #bg_input_toggle; nav-down: #save_anywhere_toggle"
+                        >
+                            <div class="config-option__wide-toggle-title">Autosaving</div>
+                            <div class="config-option__wide-toggle-value">{{autosave_mode}}</div>
+                        </button>
+                    </div>
 
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(6)"
-                                name="autosave_mode"
-                                data-checked="autosave_mode"
-                                value="Off"
-                                id="autosave_disabled"
-                                style="nav-up: #bg_input_disabled; nav-down: #camera_inversion_x"
-                            />
-                            <label class="config-option__tab-label" for="autosave_disabled">Off</label>
-                        </div>
+                    <!-- save anywhere -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(8)">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-class-config-option__wide-toggle--on="save_anywhere_mode == 'On'"
+                            data-event-click="toggle_save_anywhere_mode"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(8)"
+                            id="save_anywhere_toggle"
+                            style="nav-up: #autosave_toggle; nav-down: #camera_inversion_none"
+                        >
+                            <div class="config-option__wide-toggle-title">Anytime Saving</div>
+                            <div class="config-option__wide-toggle-value">{{save_anywhere_mode}}</div>
+                        </button>
                     </div>
                     
                     <!-- camera inversion -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(9)">
                         <label class="config-option__title">Aiming Camera Mode</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
+                                data-event-focus="set_cur_config_index(9)"
                                 name="camera_invert_mode"
                                 data-checked="camera_invert_mode"
                                 value="InvertNone"
                                 id="camera_inversion_none"
-                                style="nav-up: #autosave_enabled; nav-down: #analog_cam_enabled"
+                                style="nav-up: #save_anywhere_toggle; nav-down: #analog_cam_toggle"
                             />
                             <label class="config-option__tab-label" for="camera_inversion_none">None</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
+                                data-event-focus="set_cur_config_index(9)"
                                 name="camera_invert_mode"
                                 data-checked="camera_invert_mode"
                                 value="InvertX"
                                 id="camera_inversion_x"
-                                style="nav-up: #autosave_disabled; nav-down: #analog_cam_disabled"
+                                style="nav-up: #save_anywhere_toggle; nav-down: #analog_cam_toggle"
                             />
                             <label class="config-option__tab-label" for="camera_inversion_x">Invert X</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
+                                data-event-focus="set_cur_config_index(9)"
                                 name="camera_invert_mode"
                                 data-checked="camera_invert_mode"
                                 value="InvertY"
                                 id="camera_inversion_y"
-                                style="nav-up: #autosave_disabled; nav-down: #analog_cam_disabled"
+                                style="nav-up: #save_anywhere_toggle; nav-down: #analog_cam_toggle"
                             />
                             <label class="config-option__tab-label" for="camera_inversion_y">Invert Y</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
+                                data-event-focus="set_cur_config_index(9)"
                                 name="camera_invert_mode"
                                 data-checked="camera_invert_mode"
                                 value="InvertBoth"
                                 id="camera_inversion_both"
-                                style="nav-up: #autosave_disabled; nav-down: #analog_cam_disabled"
+                                style="nav-up: #save_anywhere_toggle; nav-down: #analog_cam_toggle"
                             />
                             <label class="config-option__tab-label" for="camera_inversion_both">Invert Both</label>
                         </div>
                     </div>
                     
                     <!-- analog camera -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(8)">
-                        <label class="config-option__title">Analog Camera</label>
-                        <div class="config-option__list">
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(8)"
-                                name="analog_cam_mode"
-                                data-checked="analog_cam_mode"
-                                value="On"
-                                id="analog_cam_enabled"
-                                style="nav-up: #camera_inversion_none; nav-down: #analog_camera_inversion_none"
-                            />
-                            <label class="config-option__tab-label" for="analog_cam_enabled">On</label>
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(10)">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-class-config-option__wide-toggle--on="analog_cam_mode == 'On'"
+                            data-event-click="toggle_analog_cam_mode"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(10)"
+                            id="analog_cam_toggle"
+                            style="nav-up: #camera_inversion_none; nav-down: #analog_camera_distance_input"
+                        >
+                            <div class="config-option__wide-toggle-title">Analog Camera</div>
+                            <div class="config-option__wide-toggle-value">{{analog_cam_mode}}</div>
+                        </button>
+                    </div>
 
+                    <!-- analog camera distance -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(11)">
+                        <label class="config-option__title">Analog Camera Distance</label>
+                        <div class="config-option__range-wrapper config-option__list">
+                            <label class="config-option__range-label">{{analog_camera_distance}}</label>
                             <input
-                                type="radio"
+                                class="nav-vert"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(8)"
-                                name="analog_cam_mode"
-                                data-checked="analog_cam_mode"
-                                value="Off"
-                                id="analog_cam_disabled"
-                                style="nav-up: #camera_inversion_x; nav-down: #analog_camera_inversion_x"
+                                data-event-focus="set_cur_config_index(11)"
+                                id="analog_camera_distance_input"
+                                type="range"
+                                min="100"
+                                max="900"
+                                step="25"
+                                style="flex: 1; margin: 0dp; nav-up: #analog_cam_toggle; nav-down: #analog_camera_inversion_none"
+                                data-value="analog_camera_distance"
                             />
-                            <label class="config-option__tab-label" for="analog_cam_disabled">Off</label>
                         </div>
                     </div>
                     
                     <!-- analog camera inversion -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(9)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(12)">
                         <label class="config-option__title">Analog Camera Mode</label>
                         <div class="config-option__list">
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(9)"
+                                data-event-focus="set_cur_config_index(12)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertNone"
                                 id="analog_camera_inversion_none"
-                                style="nav-up: #analog_cam_enabled;"
+                                style="nav-up: #analog_camera_distance_input; nav-down: #advanced_settings_toggle"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_none">None</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(9)"
+                                data-event-focus="set_cur_config_index(12)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertX"
                                 id="analog_camera_inversion_x"
-                                style="nav-up: #analog_cam_disabled;"
+                                style="nav-up: #analog_camera_distance_input; nav-down: #advanced_settings_toggle"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_x">Invert X</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(9)"
+                                data-event-focus="set_cur_config_index(12)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertY"
                                 id="analog_camera_inversion_y"
-                                style="nav-up: #analog_cam_disabled;"
+                                style="nav-up: #analog_camera_distance_input; nav-down: #advanced_settings_toggle"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_y">Invert Y</label>
 
                             <input
                                 type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(9)"
+                                data-event-focus="set_cur_config_index(12)"
                                 name="analog_camera_invert_mode"
                                 data-checked="analog_camera_invert_mode"
                                 value="InvertBoth"
                                 id="analog_camera_inversion_both"
-                                style="nav-up: #analog_cam_disabled;"
+                                style="nav-up: #analog_camera_distance_input; nav-down: #advanced_settings_toggle"
                             />
                             <label class="config-option__tab-label" for="analog_camera_inversion_both">Invert Both</label>
                         </div>
+                    </div>
+
+                    <!-- advanced settings -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(13)" id="conf-general__Advanced-Settings">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-class-config-option__wide-toggle--on="advanced_settings_mode == 'On'"
+                            data-event-click="toggle_advanced_settings_mode"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(13)"
+                            id="advanced_settings_toggle"
+                            style="nav-up: #analog_camera_inversion_none"
+                            data-attr-style="legacy_migration_tools ? 'nav-up: #analog_camera_inversion_none; nav-down: #legacy_data_inspect' : 'nav-up: #analog_camera_inversion_none'"
+                        >
+                            <div class="config-option__wide-toggle-title">Advanced Settings</div>
+                            <div class="config-option__wide-toggle-value">{{advanced_settings_mode}}</div>
+                        </button>
+                    </div>
+
+                    <div data-if="legacy_migration_tools" class="config-option" data-event-mouseover="set_cur_config_index(14)">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-event-click="inspect_legacy_data"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(14)"
+                            id="legacy_data_inspect"
+                            style="nav-up: #advanced_settings_toggle; nav-down: #legacy_data_stage"
+                        >
+                            <div class="config-option__wide-toggle-title">Inspect Existing Zelda64 Data</div>
+                            <div class="config-option__wide-toggle-value">Choose folder</div>
+                        </button>
+                    </div>
+
+                    <div data-if="legacy_migration_tools" class="config-option" data-event-mouseover="set_cur_config_index(15)">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-event-click="stage_legacy_data"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(15)"
+                            id="legacy_data_stage"
+                            style="nav-up: #legacy_data_inspect; nav-down: #legacy_data_activate"
+                        >
+                            <div class="config-option__wide-toggle-title">Stage Existing Zelda64 Data</div>
+                            <div class="config-option__wide-toggle-value">Choose folder</div>
+                        </button>
+                    </div>
+
+                    <div data-if="legacy_migration_tools" class="config-option" data-event-mouseover="set_cur_config_index(16)">
+                        <button
+                            class="config-option__wide-toggle"
+                            data-event-click="activate_legacy_data"
+                            data-event-blur="set_cur_config_index(-1)"
+                            data-event-focus="set_cur_config_index(16)"
+                            id="legacy_data_activate"
+                            style="nav-up: #legacy_data_stage"
+                        >
+                            <div class="config-option__wide-toggle-title">Activate Staged Zelda64 Data</div>
+                            <div class="config-option__wide-toggle-value">On restart</div>
+                        </button>
                     </div>
                 </div>
                 <!-- Descriptions -->
@@ -334,11 +507,16 @@
                         Applies a deadzone to joystick inputs.
                     </p>
                     <p data-if="cur_config_index == 5">
+                        Enables D-pad shortcuts during gameplay. Up uses the Goron Mask, right uses the Ocarina,
+                        down uses the Deku Mask, and left uses the Zora Mask. Use Start Game on the launcher to enable
+                        these shortcuts. N64 Mode uses the original controls.
+                    </p>
+                    <p data-if="cur_config_index == 6">
                         Allows the game to read controller input when out of focus.
                         <br/>
                         <b>This setting does not affect keyboard input.</b>
                     </p>
-                    <p data-if="cur_config_index == 6">
+                    <p data-if="cur_config_index == 7">
                         Turns on autosaving and prevents owl saves from being deleted on load. Autosaves act as owl saves and take up the same slot as they do.
                         <br/>
                         <br/>
@@ -347,10 +525,13 @@
                         <br/>
                         <b>If autosaving is disabled, existing autosaves will be deleted when loaded.</b>
                     </p>
-                    <p data-if="cur_config_index == 7">
+                    <p data-if="cur_config_index == 8">
+                        Allows the pause menu to open a normal save prompt, similar to Ocarina of Time.
+                    </p>
+                    <p data-if="cur_config_index == 9">
                         Inverts the camera controls for first-person aiming. <b>Invert Y</b> is the default and matches the original game.
                     </p>
-                    <p data-if="cur_config_index == 8">
+                    <p data-if="cur_config_index == 10">
                         Enables an analog "free" camera similar to later entries in the series that's mapped to the right analog stick on the controller.
                         <br/>
                         <br/>
@@ -359,8 +540,35 @@
                         <br/>
                         This option also enables right stick control while looking and aiming.
                     </p>
-                    <p data-if="cur_config_index == 9">
+                    <p data-if="cur_config_index == 11">
+                        Maximum camera distance for analog camera.
+                    </p>
+                    <p data-if="cur_config_index == 12">
                         Inverts the camera controls for the analog camera if it's enabled. <b>None</b> is the default.
+                    </p>
+                    <p data-if="cur_config_index == 13">
+                        Shows advanced app-owned tools, including the Editor tab.
+                    </p>
+                    <p data-if="cur_config_index == 14">
+                        Builds a read-only inventory of an existing Zelda64 folder before migration. This does not copy, move, rename, or delete source files.
+                    </p>
+                    <p data-if="cur_config_index == 15">
+                        Copies existing Zelda64 data into private staging and verifies every file. This is resumable and does not replace live app data or modify source files.
+                    </p>
+                    <p data-if="cur_config_index == 16">
+                        Activates verified staged data on the next launch. Existing live files are backed up, and clean Android runtime dependencies are preserved.
+                    </p>
+                    <p data-if="cur_config_index == 17">
+                        Selects the Android touch interface. <b>N64</b>, <b>GameCube</b>, and <b>Modern</b> use the complete Linkzenic Ship of Harkinian touch-controller design. <b>Classic</b> keeps the original XML overlay as a fallback.
+                    </p>
+                    <p data-if="cur_config_index == 18">
+                        Scales the complete integrated touch layout from 75% to 150%.
+                    </p>
+                    <p data-if="cur_config_index == 19">
+                        Changes the opacity of the integrated touch controls without affecting their hit areas.
+                    </p>
+                    <p data-if="cur_config_index == 20">
+                        Opens the Linkzenic touch-layout editor. Drag controls to move them, select a control to hide it, or drag its corner handles to resize it.
                     </p>
                 </div>
             </div>

@@ -17,6 +17,9 @@ struct ControllerState {
     std::array<float, 3> latest_accelerometer;
     GamepadMotion motion;
     uint32_t prev_gyro_timestamp;
+#if defined(__ANDROID__)
+    bool is_virtual = false;
+#endif
     ControllerState() : controller{}, latest_accelerometer{}, motion{}, prev_gyro_timestamp{} {
         motion.Reset();
         motion.SetCalibrationMode(GamepadMotionHelpers::CalibrationMode::Stillness | GamepadMotionHelpers::CalibrationMode::SensorFusion);
@@ -45,6 +48,30 @@ static struct {
 static struct {
     std::list<std::filesystem::path> files_dropped;
 } DropState;
+
+#if defined(__ANDROID__)
+static std::atomic_bool odin_face_button_glyphs = false;
+
+bool recomp::uses_odin_face_button_glyphs() {
+    return odin_face_button_glyphs.load();
+}
+
+static void update_odin_face_button_glyphs() {
+    size_t physical_controller_count = 0;
+    bool odin_controller_connected = false;
+    for (const auto& [id, state] : InputState.controller_states) {
+        // The touch overlay also registers a virtual gamepad.
+        if (state.controller == nullptr || state.is_virtual) {
+            continue;
+        }
+        ++physical_controller_count;
+        // Odin mode reports by label. Xbox mode uses product 0x0112.
+        odin_controller_connected |= SDL_GameControllerGetVendor(state.controller) == 0x2020 &&
+            SDL_GameControllerGetProduct(state.controller) == 0x0111;
+    }
+    odin_face_button_glyphs.store(physical_controller_count == 1 && odin_controller_connected);
+}
+#endif
 
 std::atomic<recomp::InputDevice> scanning_device = recomp::InputDevice::COUNT;
 std::atomic<recomp::InputField> scanned_input;
@@ -139,6 +166,10 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
                 printf("  Instance ID: %d\n", SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)));
                 ControllerState& state = InputState.controller_states[SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))];
                 state.controller = controller;
+#if defined(__ANDROID__)
+                state.is_virtual = SDL_JoystickIsVirtual(controller_event->which) == SDL_TRUE;
+                update_odin_face_button_glyphs();
+#endif
 
                 if (SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_GYRO) && SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_ACCEL)) {
                     SDL_GameControllerSetSensorEnabled(controller, SDL_SensorType::SDL_SENSOR_GYRO, SDL_TRUE);
@@ -152,6 +183,9 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             SDL_ControllerDeviceEvent* controller_event = &event->cdevice;
             printf("Controller removed: %d\n", controller_event->which);
             InputState.controller_states.erase(controller_event->which);
+#if defined(__ANDROID__)
+            update_odin_face_button_glyphs();
+#endif
         }
         break;
     case SDL_EventType::SDL_QUIT: {
@@ -253,7 +287,12 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             float z = event->csensor.data[2] * rad_to_deg;
             ControllerState& state = InputState.controller_states[event->csensor.which];
             uint64_t cur_timestamp = event->csensor.timestamp;
-            uint32_t delta_ms = state.prev_gyro_timestamp != 0 ? cur_timestamp - state.prev_gyro_timestamp : 0;
+            if (state.prev_gyro_timestamp == 0 || cur_timestamp <= state.prev_gyro_timestamp ||
+                cur_timestamp - state.prev_gyro_timestamp > 100) {
+                state.prev_gyro_timestamp = cur_timestamp;
+                break;
+            }
+            uint32_t delta_ms = cur_timestamp - state.prev_gyro_timestamp;
             state.motion.ProcessMotion(x, y, z, state.latest_accelerometer[0], state.latest_accelerometer[1], state.latest_accelerometer[2], delta_ms * 0.001f);
             state.prev_gyro_timestamp = cur_timestamp;
 
@@ -397,16 +436,28 @@ const recomp::DefaultN64Mappings recomp::default_n64_keyboard_mappings = {
 
 const recomp::DefaultN64Mappings recomp::default_n64_controller_mappings = {
     .a = {
+#if defined(__ANDROID__)
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_EAST},
+#else
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_SOUTH},
+#endif
     },
     .b = {
+#if defined(__ANDROID__)
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_SOUTH},
+#else
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_WEST},
+#endif
     },
     .l = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_LEFTSHOULDER},
     },
     .r = {
+#if defined(__ANDROID__)
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER},
+#else
         {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERRIGHT + 1},
+#endif
     },
     .z = {
         {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERLEFT + 1},
@@ -420,7 +471,11 @@ const recomp::DefaultN64Mappings recomp::default_n64_controller_mappings = {
     },
     .c_right = {
         {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTX + 1},
+#if defined(__ANDROID__)
+        {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_TRIGGERRIGHT + 1},
+#else
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_EAST},
+#endif
     },
     .c_up = {
         {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = -(SDL_CONTROLLER_AXIS_RIGHTY + 1)},
@@ -428,7 +483,11 @@ const recomp::DefaultN64Mappings recomp::default_n64_controller_mappings = {
     },
     .c_down = {
         {.input_type = (uint32_t)InputType::ControllerAnalog, .input_id = SDL_CONTROLLER_AXIS_RIGHTY + 1},
+#if defined(__ANDROID__)
+        {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_WEST},
+#else
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER},
+#endif
     },
     .dpad_left = {
         {.input_type = (uint32_t)InputType::ControllerDigital, .input_id = SDL_CONTROLLER_BUTTON_DPAD_LEFT},
@@ -743,6 +802,22 @@ bool recomp::all_input_disabled() {
 }
 
 std::string controller_button_to_string(SDL_GameControllerButton button) {
+#if defined(__ANDROID__)
+    if (recomp::uses_odin_face_button_glyphs()) {
+        switch (button) {
+        case SDL_CONTROLLER_BUTTON_A:
+            return PF_GAMEPAD_B; // A is east.
+        case SDL_CONTROLLER_BUTTON_B:
+            return PF_GAMEPAD_A; // B is south.
+        case SDL_CONTROLLER_BUTTON_X:
+            return PF_GAMEPAD_Y; // X is north.
+        case SDL_CONTROLLER_BUTTON_Y:
+            return PF_GAMEPAD_X; // Y is west.
+        default:
+            break;
+        }
+    }
+#endif
     switch (button) {
     case SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_A:
         return PF_GAMEPAD_A;

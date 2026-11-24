@@ -65,6 +65,8 @@ namespace recompui {
         Graphics,
         Sound,
         Mods,
+        Editor,
+        Quit,
         Debug,
     };
 
@@ -115,6 +117,7 @@ namespace recompui {
     void close_prompt();
     bool is_prompt_open();
     void update_mod_list(bool scan_mods = true);
+    void refresh_save_editor_config();
     void process_game_started();
 
     void apply_color_hack();
@@ -139,6 +142,8 @@ namespace recompui {
     void queue_image_from_bytes_rgba32(const std::string &src, const std::vector<char> &bytes, uint32_t width, uint32_t height);
     void queue_image_from_bytes_file(const std::string &src, const std::vector<char> &bytes);
     void release_image(const std::string &src);
+    void request_clock_texture_reload();
+    void refresh_clock_texture_pack_name();
 
     void drop_files(const std::list<std::filesystem::path> &file_list);
 }

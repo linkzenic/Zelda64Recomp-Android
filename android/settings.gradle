@@ -15,4 +15,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = 'Zelda64RecompAndroid'
-include ':app'
+include ':probe'
+include ':game'

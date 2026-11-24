@@ -12,6 +12,10 @@
 
 #include "core/ui_context.h"
 
+#include <cstdlib>
+#include <initializer_list>
+#include <string>
+
 ultramodern::renderer::GraphicsConfig new_options;
 Rml::DataModelHandle nav_help_model_handle;
 Rml::DataModelHandle general_model_handle;
@@ -19,12 +23,23 @@ Rml::DataModelHandle controls_model_handle;
 Rml::DataModelHandle graphics_model_handle;
 Rml::DataModelHandle sound_options_model_handle;
 
+static std::string clock_texture_pack_name = "Bundled";
+
 // True if controller config menu is open, false if keyboard config menu is open, undefined otherwise
 bool configuring_controller = false;
 
 #if defined(__ANDROID__)
 extern "C" bool zelda64_android_are_touch_controls_disabled();
 extern "C" void zelda64_android_set_touch_controls_disabled(bool disabled);
+extern "C" int zelda64_android_get_touch_face_button_layout();
+extern "C" void zelda64_android_set_touch_face_button_layout(int layout);
+extern "C" int zelda64_android_get_integrated_touch_style();
+extern "C" void zelda64_android_set_integrated_touch_style(int style);
+extern "C" int zelda64_android_get_integrated_touch_scale();
+extern "C" void zelda64_android_set_integrated_touch_scale(int percent);
+extern "C" int zelda64_android_get_integrated_touch_opacity();
+extern "C" void zelda64_android_set_integrated_touch_opacity(int percent);
+extern "C" void zelda64_android_edit_integrated_touch_layout();
 #endif
 
 int recompui::config_tab_to_index(recompui::ConfigTab tab) {
@@ -39,8 +54,12 @@ int recompui::config_tab_to_index(recompui::ConfigTab tab) {
         return 3;
     case recompui::ConfigTab::Mods:
         return 4;
-    case recompui::ConfigTab::Debug:
+    case recompui::ConfigTab::Editor:
         return 5;
+    case recompui::ConfigTab::Quit:
+        return 6;
+    case recompui::ConfigTab::Debug:
+        return 7;
     default:
         assert(false && "Unknown config tab.");
         return 0;
@@ -139,6 +158,23 @@ void recomp::cancel_scanning_input() {
 }
 
 void recomp::config_menu_set_cont_or_kb(bool cont_interacted) {
+#if defined(__ANDROID__)
+    static bool had_odin_glyphs = false;
+    const bool use_odin_glyphs = recomp::uses_odin_face_button_glyphs();
+    if (had_odin_glyphs != use_odin_glyphs) {
+        had_odin_glyphs = use_odin_glyphs;
+        if (controls_model_handle) {
+            controls_model_handle.DirtyVariable("inputs");
+        }
+        if (nav_help_model_handle) {
+            nav_help_model_handle.DirtyVariable("nav_help__accept");
+            nav_help_model_handle.DirtyVariable("nav_help__exit");
+        }
+        if (graphics_model_handle) {
+            graphics_model_handle.DirtyVariable("gfx_help__apply");
+        }
+    }
+#endif
     if (cont_active != cont_interacted) {
         cont_active = cont_interacted;
 
@@ -216,6 +252,33 @@ void close_config_menu() {
     close_config_menu_impl();
 }
 
+#if defined(__ANDROID__)
+extern "C" bool zelda64_android_toggle_settings_menu() {
+    const recompui::ContextId config_context = recompui::get_config_context_id();
+    const recompui::ContextId sub_menu_context = recompui::get_config_sub_menu_context_id();
+    if (recompui::is_context_shown(config_context) || recompui::is_context_shown(sub_menu_context)) {
+        close_config_menu();
+        return false;
+    }
+
+    if (recompui::is_prompt_open() ||
+        (recompui::is_context_capturing_mouse() &&
+         !recompui::is_context_shown(recompui::get_launcher_context_id()))) {
+        return false;
+    }
+
+    recompui::set_config_tab(recompui::ConfigTab::General);
+    recompui::hide_all_contexts();
+    recompui::show_context(config_context, "");
+    return true;
+}
+
+extern "C" bool zelda64_android_is_settings_menu_open() {
+    return recompui::is_context_shown(recompui::get_config_context_id()) ||
+        recompui::is_context_shown(recompui::get_config_sub_menu_context_id());
+}
+#endif
+
 void zelda64::open_quit_game_prompt() {
     recompui::open_choice_prompt(
         "Are you sure you want to quit?",
@@ -226,10 +289,10 @@ void zelda64::open_quit_game_prompt() {
             ultramodern::quit();
         },
         []() {},
-        recompui::ButtonVariant::Error,
+        recompui::ButtonVariant::Primary,
         recompui::ButtonVariant::Tertiary,
         true,
-        "config__quit-game-button"
+        "tab_quit"
     );
 }
 
@@ -242,12 +305,22 @@ struct ControlOptionsContext {
     zelda64::TargetingMode targeting_mode;
     recomp::BackgroundInputMode background_input_mode;
     zelda64::AutosaveMode autosave_mode;
+    zelda64::SaveAnywhereMode save_anywhere_mode;
     zelda64::CameraInvertMode camera_invert_mode;
     zelda64::AnalogCamMode analog_cam_mode;
+    int analog_camera_distance; // 100 to 900, free camera distance in world units
     zelda64::CameraInvertMode analog_camera_invert_mode;
+    zelda64::DpadItemsMode dpad_items_mode;
+    zelda64::AdvancedSettingsMode advanced_settings_mode;
 };
 
 ControlOptionsContext control_options_context;
+
+struct HudOptionsContext {
+    zelda64::ClockStyle clock_style;
+};
+
+HudOptionsContext hud_options_context;
 
 int recomp::get_rumble_strength() {
     return control_options_context.rumble_strength;
@@ -332,6 +405,21 @@ void zelda64::set_autosave_mode(zelda64::AutosaveMode mode) {
     }
 }
 
+zelda64::SaveAnywhereMode zelda64::get_save_anywhere_mode() {
+    return control_options_context.save_anywhere_mode;
+}
+
+void zelda64::set_save_anywhere_mode(zelda64::SaveAnywhereMode mode) {
+    control_options_context.save_anywhere_mode = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("save_anywhere_mode");
+    }
+}
+
+bool zelda64::get_save_anywhere_enabled() {
+    return get_save_anywhere_mode() == SaveAnywhereMode::On;
+}
+
 zelda64::CameraInvertMode zelda64::get_camera_invert_mode() {
     return control_options_context.camera_invert_mode;
 }
@@ -354,6 +442,23 @@ void zelda64::set_analog_cam_mode(zelda64::AnalogCamMode mode) {
     }
 }
 
+int zelda64::get_analog_camera_distance() {
+    return control_options_context.analog_camera_distance;
+}
+
+void zelda64::set_analog_camera_distance(int distance) {
+    if (distance < 100) {
+        distance = 100;
+    } else if (distance > 900) {
+        distance = 900;
+    }
+
+    control_options_context.analog_camera_distance = distance;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("analog_camera_distance");
+    }
+}
+
 zelda64::CameraInvertMode zelda64::get_analog_camera_invert_mode() {
     return control_options_context.analog_camera_invert_mode;
 }
@@ -362,6 +467,49 @@ void zelda64::set_analog_camera_invert_mode(zelda64::CameraInvertMode mode) {
     control_options_context.analog_camera_invert_mode = mode;
     if (general_model_handle) {
         general_model_handle.DirtyVariable("analog_camera_invert_mode");
+    }
+}
+
+zelda64::DpadItemsMode zelda64::get_dpad_items_mode() {
+    return control_options_context.dpad_items_mode;
+}
+
+void zelda64::set_dpad_items_mode(zelda64::DpadItemsMode mode) {
+    control_options_context.dpad_items_mode = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("dpad_items_mode");
+        general_model_handle.DirtyVariable("dpad_items_enabled");
+    }
+}
+
+bool zelda64::get_dpad_items_enabled() {
+    return control_options_context.dpad_items_mode != zelda64::DpadItemsMode::Off;
+}
+
+zelda64::AdvancedSettingsMode zelda64::get_advanced_settings_mode() {
+    return control_options_context.advanced_settings_mode;
+}
+
+void zelda64::set_advanced_settings_mode(zelda64::AdvancedSettingsMode mode) {
+    control_options_context.advanced_settings_mode = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("advanced_settings_mode");
+        general_model_handle.DirtyVariable("advanced_settings_enabled");
+    }
+}
+
+bool zelda64::get_advanced_settings_enabled() {
+    return control_options_context.advanced_settings_mode == zelda64::AdvancedSettingsMode::On;
+}
+
+zelda64::ClockStyle zelda64::get_clock_style() {
+    return hud_options_context.clock_style;
+}
+
+void zelda64::set_clock_style(zelda64::ClockStyle style) {
+    hud_options_context.clock_style = style;
+    if (graphics_model_handle) {
+        graphics_model_handle.DirtyVariable("clock_style");
     }
 }
 
@@ -473,23 +621,66 @@ Rml::Element* recompui::get_child_by_tag(Rml::Element* parent, const std::string
     return nullptr;
 }
 
+static Rml::ElementDocument* get_config_document() {
+    recompui::ContextId config_context = recompui::get_config_context_id();
+    return config_context.get_document();
+}
+
+static Rml::Element* get_config_element(const char* id) {
+    Rml::ElementDocument* doc = get_config_document();
+    return doc != nullptr ? doc->GetElementById(id) : nullptr;
+}
+
+static void set_tab_nav_down(const char* tab_id, std::initializer_list<const char*> target_ids) {
+    Rml::Element* tab = get_config_element(tab_id);
+    if (tab == nullptr) {
+        return;
+    }
+
+    for (const char* target_id : target_ids) {
+        if (get_config_element(target_id) != nullptr) {
+            tab->SetProperty(Rml::PropertyId::NavDown, Rml::Property{ "#" + std::string{ target_id }, Rml::Unit::STRING });
+            return;
+        }
+    }
+
+    tab->SetProperty(Rml::PropertyId::NavDown, Rml::Style::Nav::Auto);
+}
+
+static void set_config_tab_nav_downs() {
+    set_tab_nav_down("tab_general", { "tm_switch" });
+    set_tab_nav_down("tab_controls", { "cont_kb_toggle", "input_row_button_0_0" });
+    set_tab_nav_down("tab_graphics", { "res_240", "res_original" });
+    set_tab_nav_down("tab_sound", { "main_volume_input" });
+    set_tab_nav_down("tab_debug", { "area_index_select" });
+}
+
 class ConfigTabsetListener : public Rml::EventListener {
     void ProcessEvent(Rml::Event& event) override {
         if (event.GetId() == Rml::EventId::Tabchange) {
             int tab_index = event.GetParameter<int>("tab_index", 0);
-            bool in_mod_tab = (tab_index == recompui::config_tab_to_index(recompui::ConfigTab::Mods));
-            if (in_mod_tab) {
+            Rml::Element* active_tab = nullptr;
+            if (Rml::Element* tabs = recompui::get_child_by_tag(recompui::get_config_tabset(), "tabs")) {
+                if (tab_index >= 0 && tab_index < tabs->GetNumChildren()) {
+                    active_tab = tabs->GetChild(tab_index);
+                }
+            }
+
+            const std::string active_tab_id = active_tab ? active_tab->GetId() : "";
+            if (active_tab_id == "tab_mods") {
+                recompui::update_mod_list(false);
                 recompui::set_config_tabset_mod_nav();
             }
+            else if (active_tab_id == "tab_editor") {
+                recompui::refresh_save_editor_config();
+                set_config_tab_nav_downs();
+            }
+            else if (active_tab_id == "tab_quit") {
+                zelda64::open_quit_game_prompt();
+                set_config_tab_nav_downs();
+            }
             else {
-                Rml::ElementTabSet* tabset = recompui::get_config_tabset();
-                Rml::Element* tabs = recompui::get_child_by_tag(tabset, "tabs");
-                if (tabs != nullptr) {
-                    size_t num_children = tabs->GetNumChildren();
-                    for (size_t i = 0; i < num_children; i++) {
-                        tabs->GetChild(i)->SetProperty(Rml::PropertyId::NavDown, Rml::Style::Nav::Auto);
-                    }
-                }
+                set_config_tab_nav_downs();
             }
         }
     }
@@ -509,6 +700,7 @@ public:
 		config_context = recompui::create_context(zelda64::get_asset_path("config_menu.rml"));
         recompui::update_mod_list(false);
         recompui::get_config_tabset()->AddEventListener(Rml::EventId::Tabchange, &config_tabset_listener);
+        set_config_tab_nav_downs();
     }
     void register_events(recompui::UiEventListenerInstancer& listener) override {
         recompui::register_event(listener, "apply_options",
@@ -621,6 +813,54 @@ public:
 #endif
         constructor.Bind("is_android", &is_android);
 
+        static std::string android_active_vulkan_driver = [] {
+#if defined(__ANDROID__)
+            const char* custom_driver_display_name = std::getenv("APP_CUSTOM_VULKAN_DRIVER_DISPLAY_NAME");
+            if (custom_driver_display_name != nullptr && custom_driver_display_name[0] != '\0') {
+                return std::string{ custom_driver_display_name };
+            }
+            const char* custom_driver_name = std::getenv("APP_CUSTOM_VULKAN_DRIVER_NAME");
+            if (custom_driver_name != nullptr && custom_driver_name[0] != '\0') {
+                return std::string{ custom_driver_name };
+            }
+#endif
+            return std::string{ "System" };
+        }();
+        constructor.Bind("android_active_vulkan_driver", &android_active_vulkan_driver);
+
+        static bool android_custom_vulkan_driver_active = [] {
+#if defined(__ANDROID__)
+            const char* custom_driver_display_name = std::getenv("APP_CUSTOM_VULKAN_DRIVER_DISPLAY_NAME");
+            if (custom_driver_display_name != nullptr && custom_driver_display_name[0] != '\0') {
+                return true;
+            }
+            const char* custom_driver_name = std::getenv("APP_CUSTOM_VULKAN_DRIVER_NAME");
+            if (custom_driver_name != nullptr && custom_driver_name[0] != '\0') {
+                return true;
+            }
+#endif
+            return false;
+        }();
+        constructor.Bind("android_custom_vulkan_driver_active", &android_custom_vulkan_driver_active);
+
+        recompui::refresh_clock_texture_pack_name();
+        constructor.Bind("clock_texture_pack_name", &clock_texture_pack_name);
+
+        constructor.BindEventCallback("select_gpu_driver",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                zelda64::open_driver_file_dialog();
+            });
+
+        constructor.BindEventCallback("use_system_gpu_driver",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                zelda64::clear_custom_driver();
+            });
+
+        constructor.BindEventCallback("select_clock_texture_pack",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                zelda64::open_clock_texture_file_dialog();
+            });
+
         constructor.BindFunc("res_option",
             [](Rml::Variant& out) { get_option(new_options.res_option, out); },
             [](const Rml::Variant& in) {
@@ -635,6 +875,22 @@ public:
         bind_option(constructor, "hr_option", &new_options.hr_option);
         bind_option(constructor, "msaa_option", &new_options.msaa_option);
         bind_option(constructor, "rr_option", &new_options.rr_option);
+        constructor.BindFunc("clock_style",
+            [](Rml::Variant& out) { get_option(hud_options_context.clock_style, out); },
+            [](const Rml::Variant& in) {
+                set_option(hud_options_context.clock_style, in);
+                recompui::request_clock_texture_reload();
+                graphics_model_handle.DirtyVariable("clock_style");
+                graphics_model_handle.DirtyVariable("options_changed");
+                graphics_model_handle.DirtyVariable("ds_info");
+            }
+        );
+        constructor.BindFunc("minimap_rupee_placement",
+            [](Rml::Variant& out) { out = zelda64::get_swap_minimap_and_rupees() ? "Swapped" : "Original"; },
+            [](const Rml::Variant& in) {
+                zelda64::set_swap_minimap_and_rupees(in.Get<Rml::String>() == "Swapped");
+                graphics_model_handle.DirtyVariable("minimap_rupee_placement");
+            });
         constructor.BindFunc("rr_manual_value",
             [](Rml::Variant& out) {
                 out = new_options.rr_manual_value;
@@ -774,6 +1030,33 @@ public:
                 bool disabled = zelda64_android_are_touch_controls_disabled();
                 zelda64_android_set_touch_controls_disabled(!disabled);
                 model_handle.DirtyVariable("android_touch_controls_disabled");
+#endif
+            });
+
+        constructor.BindEventCallback("apply_modern_bindings",
+            [](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+#if defined(__ANDROID__)
+                recompui::open_choice_prompt(
+                    "Apply Modern controller bindings?",
+                    "This replaces your current controller bindings. Attack uses the bottom face button, action uses the right, and items use the top, left, and right trigger.",
+                    "Apply Modern",
+                    "Keep current",
+                    []() {
+                        zelda64::reset_cont_input_bindings();
+                        zelda64_android_set_integrated_touch_style(3);
+                        zelda64::save_config();
+                        controls_model_handle.DirtyAllVariables();
+                        general_model_handle.DirtyVariable("integrated_touch_style");
+                        nav_help_model_handle.DirtyVariable("nav_help__accept");
+                        nav_help_model_handle.DirtyVariable("nav_help__exit");
+                        graphics_model_handle.DirtyVariable("gfx_help__apply");
+                    },
+                    []() {},
+                    recompui::ButtonVariant::Primary,
+                    recompui::ButtonVariant::Tertiary,
+                    true,
+                    "apply_modern_bindings"
+                );
 #endif
             });
 
@@ -946,17 +1229,180 @@ public:
         }
 
         bind_config_list_events(constructor);
+
+#if defined(__ANDROID__)
+        static bool is_android = true;
+#else
+        static bool is_android = false;
+#endif
+        constructor.Bind("is_android", &is_android);
+
+#if defined(__ANDROID__)
+        constructor.BindFunc("integrated_touch_style",
+            [](Rml::Variant& out) {
+                switch (zelda64_android_get_integrated_touch_style()) {
+                    case 1:
+                        out = "N64";
+                        break;
+                    case 2:
+                        out = "GameCube";
+                        break;
+                    case 3:
+                        out = "Modern";
+                        break;
+                    default:
+                        out = "Classic";
+                        break;
+                }
+            },
+            [](const Rml::Variant& in) {
+                const std::string style = in.Get<std::string>();
+                const int style_index = style == "N64" ? 1 : style == "GameCube" ? 2 : style == "Modern" ? 3 : 0;
+                zelda64_android_set_integrated_touch_style(style_index);
+                general_model_handle.DirtyVariable("integrated_touch_style");
+            });
+        constructor.BindFunc("integrated_touch_scale",
+            [](Rml::Variant& out) { out = zelda64_android_get_integrated_touch_scale(); },
+            [](const Rml::Variant& in) {
+                zelda64_android_set_integrated_touch_scale(in.Get<int>());
+                general_model_handle.DirtyVariable("integrated_touch_scale");
+            });
+        constructor.BindFunc("integrated_touch_opacity",
+            [](Rml::Variant& out) { out = zelda64_android_get_integrated_touch_opacity(); },
+            [](const Rml::Variant& in) {
+                zelda64_android_set_integrated_touch_opacity(in.Get<int>());
+                general_model_handle.DirtyVariable("integrated_touch_opacity");
+            });
+        constructor.BindEventCallback("edit_integrated_touch_layout",
+            [](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+                zelda64_android_edit_integrated_touch_layout();
+            });
+#endif
         
         constructor.Bind("rumble_strength", &control_options_context.rumble_strength);
         constructor.Bind("gyro_sensitivity", &control_options_context.gyro_sensitivity);
         constructor.Bind("mouse_sensitivity", &control_options_context.mouse_sensitivity);
         constructor.Bind("joystick_deadzone", &control_options_context.joystick_deadzone);
+        constructor.Bind("analog_camera_distance", &control_options_context.analog_camera_distance);
         bind_option(constructor, "targeting_mode", &control_options_context.targeting_mode);
         bind_option(constructor, "background_input_mode", &control_options_context.background_input_mode);
         bind_option(constructor, "autosave_mode", &control_options_context.autosave_mode);
+        bind_option(constructor, "save_anywhere_mode", &control_options_context.save_anywhere_mode);
         bind_option(constructor, "camera_invert_mode", &control_options_context.camera_invert_mode);
         bind_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
+        bind_option(constructor, "dpad_items_mode", &control_options_context.dpad_items_mode);
+        constructor.BindFunc("dpad_items_enabled", [](Rml::Variant& out) {
+            out = zelda64::get_dpad_items_enabled();
+        });
+        constructor.BindFunc("advanced_settings_mode",
+            [](Rml::Variant& out) { get_option(control_options_context.advanced_settings_mode, out); },
+            [](const Rml::Variant& in) {
+                set_option(control_options_context.advanced_settings_mode, in);
+                general_model_handle.DirtyVariable("advanced_settings_mode");
+                general_model_handle.DirtyVariable("advanced_settings_enabled");
+            }
+        );
+        constructor.BindFunc("advanced_settings_enabled", [](Rml::Variant& out) {
+            out = zelda64::get_advanced_settings_enabled();
+        });
+
+        constructor.BindEventCallback("toggle_dpad_items_mode",
+            [](Rml::DataModelHandle model_handle, Rml::Event&, const Rml::VariantList&) {
+                switch (zelda64::get_dpad_items_mode()) {
+                    case zelda64::DpadItemsMode::Off:
+                        zelda64::set_dpad_items_mode(zelda64::DpadItemsMode::Default);
+                        break;
+                    case zelda64::DpadItemsMode::Default:
+                        zelda64::set_dpad_items_mode(zelda64::DpadItemsMode::HDStyle);
+                        break;
+                    case zelda64::DpadItemsMode::HDStyle:
+                    case zelda64::DpadItemsMode::OptionCount:
+                        zelda64::set_dpad_items_mode(zelda64::DpadItemsMode::Off);
+                        break;
+                }
+                model_handle.DirtyVariable("dpad_items_mode");
+                model_handle.DirtyVariable("dpad_items_enabled");
+            });
+
+        constructor.BindEventCallback("toggle_background_input_mode",
+            [](Rml::DataModelHandle model_handle, Rml::Event&, const Rml::VariantList&) {
+                recomp::set_background_input_mode(
+                    recomp::get_background_input_mode() == recomp::BackgroundInputMode::On
+                        ? recomp::BackgroundInputMode::Off
+                        : recomp::BackgroundInputMode::On
+                );
+                model_handle.DirtyVariable("background_input_mode");
+            });
+
+        constructor.BindEventCallback("toggle_autosave_mode",
+            [](Rml::DataModelHandle model_handle, Rml::Event&, const Rml::VariantList&) {
+                zelda64::set_autosave_mode(
+                    zelda64::get_autosave_mode() == zelda64::AutosaveMode::On
+                        ? zelda64::AutosaveMode::Off
+                        : zelda64::AutosaveMode::On
+                );
+                model_handle.DirtyVariable("autosave_mode");
+            });
+
+        constructor.BindEventCallback("toggle_save_anywhere_mode",
+            [](Rml::DataModelHandle model_handle, Rml::Event&, const Rml::VariantList&) {
+                zelda64::set_save_anywhere_mode(
+                    zelda64::get_save_anywhere_mode() == zelda64::SaveAnywhereMode::On
+                        ? zelda64::SaveAnywhereMode::Off
+                        : zelda64::SaveAnywhereMode::On
+                );
+                model_handle.DirtyVariable("save_anywhere_mode");
+            });
+
+        constructor.BindEventCallback("toggle_analog_cam_mode",
+            [](Rml::DataModelHandle model_handle, Rml::Event&, const Rml::VariantList&) {
+                zelda64::set_analog_cam_mode(
+                    zelda64::get_analog_cam_mode() == zelda64::AnalogCamMode::On
+                        ? zelda64::AnalogCamMode::Off
+                        : zelda64::AnalogCamMode::On
+                );
+                model_handle.DirtyVariable("analog_cam_mode");
+            });
+
+        constructor.BindEventCallback("toggle_advanced_settings_mode",
+            [](Rml::DataModelHandle model_handle, Rml::Event&, const Rml::VariantList&) {
+                zelda64::set_advanced_settings_mode(
+                    zelda64::get_advanced_settings_mode() == zelda64::AdvancedSettingsMode::On
+                        ? zelda64::AdvancedSettingsMode::Off
+                        : zelda64::AdvancedSettingsMode::On
+                );
+                model_handle.DirtyVariable("advanced_settings_mode");
+                model_handle.DirtyVariable("advanced_settings_enabled");
+            });
+
+#if defined(ZELDA_ANDROID_LEGACY_MIGRATION_TOOLS)
+        static bool legacy_migration_tools = true;
+#else
+        static bool legacy_migration_tools = false;
+#endif
+        constructor.Bind("legacy_migration_tools", &legacy_migration_tools);
+
+        constructor.BindEventCallback("inspect_legacy_data",
+            [](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+                if (legacy_migration_tools) {
+                    zelda64::open_legacy_data_inventory_picker();
+                }
+            });
+
+        constructor.BindEventCallback("stage_legacy_data",
+            [](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+                if (legacy_migration_tools) {
+                    zelda64::open_legacy_data_staging_picker();
+                }
+            });
+
+        constructor.BindEventCallback("activate_legacy_data",
+            [](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+                if (legacy_migration_tools) {
+                    zelda64::schedule_legacy_data_activation();
+                }
+            });
 
         general_model_handle = constructor.GetModelHandle();
     }
@@ -974,6 +1420,12 @@ public:
         bind_atomic(constructor, sound_options_model_handle, "main_volume", &sound_options_context.main_volume);
         bind_atomic(constructor, sound_options_model_handle, "bgm_volume", &sound_options_context.bgm_volume);
         bind_atomic(constructor, sound_options_model_handle, "low_health_beeps_enabled", &sound_options_context.low_health_beeps_enabled);
+
+        constructor.BindEventCallback("toggle_low_health_beeps",
+            [](Rml::DataModelHandle model_handle, Rml::Event&, const Rml::VariantList&) {
+                zelda64::set_low_health_beeps_enabled(!zelda64::get_low_health_beeps_enabled());
+                model_handle.DirtyVariable("low_health_beeps_enabled");
+            });
     }
 
     void make_debug_bindings(Rml::Context* context) {
@@ -1025,6 +1477,23 @@ std::unique_ptr<recompui::MenuController> recompui::create_config_menu() {
 
 bool zelda64::get_debug_mode_enabled() {
     return debug_context.debug_enabled;
+}
+
+void recompui::refresh_clock_texture_pack_name() {
+    std::string display_name = "Bundled";
+#if defined(__ANDROID__)
+    const char* pack_display_name = std::getenv("APP_CLOCK_TEXTURE_PACK_DISPLAY_NAME");
+    if (pack_display_name != nullptr && pack_display_name[0] != '\0') {
+        display_name = pack_display_name;
+    }
+#endif
+
+    if (clock_texture_pack_name != display_name) {
+        clock_texture_pack_name = std::move(display_name);
+        if (graphics_model_handle) {
+            graphics_model_handle.DirtyVariable("clock_texture_pack_name");
+        }
+    }
 }
 
 void zelda64::set_debug_mode_enabled(bool enabled) {

@@ -28,6 +28,7 @@
 	<link type="text/template" href="config_menu/graphics.rml" />
 	<link type="text/template" href="config_menu/sound.rml" />
 	<link type="text/template" href="config_menu/mods.rml" />
+	<link type="text/template" href="config_menu/editor.rml" />
 	<link type="text/template" href="config_menu/debug.rml" />
 </head>
 <body class="window">
@@ -71,6 +72,19 @@
 						<panel class="config">
 							<template src="config-menu__mods" />
 						</panel>
+						<tab class="tab" data-model="general_model" data-if="advanced_settings_enabled" id="tab_editor">
+							<div>Editor</div>
+							<div class="tab__indicator"></div>
+						</tab>
+						<panel class="config" data-model="general_model" data-if="advanced_settings_enabled">
+							<template src="config-menu__editor" />
+						</panel>
+						<tab class="tab" id="tab_quit">
+							<div>Quit</div>
+							<div class="tab__indicator"></div>
+						</tab>
+						<panel class="config">
+						</panel>
 						<tab class="tab" data-model="debug_model" data-if="debug_enabled" id="tab_debug">
 							<div>Debug</div>
 							<div class="tab__indicator"></div>
@@ -80,13 +94,6 @@
 						</panel>
 					</tabset>
 					<div class="config__icon-buttons">
-						<button
-							class="icon-button"
-							onclick="open_quit_game_prompt"
-							id="config__quit-game-button"
-						>
-							<svg src="icons/Quit.svg" />
-						</button>
 						<button
 							class="icon-button"
 							onclick="close_config_menu"

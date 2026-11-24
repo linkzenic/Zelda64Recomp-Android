@@ -3,12 +3,15 @@
 #include "ui_container.h"
 #include "ui_label.h"
 
+#include <algorithm>
+
 namespace recompui {
     class RadioOption : public Element {
     private:
         Style hover_style;
         Style checked_style;
         Style pulsing_style;
+        Style disabled_style;
         std::function<void(uint32_t)> pressed_callback = nullptr;
         std::function<void(bool)> focus_callback = nullptr;
         uint32_t index = 0;
@@ -20,6 +23,7 @@ namespace recompui {
         void set_pressed_callback(std::function<void(uint32_t)> callback);
         void set_focus_callback(std::function<void(bool)> callback);
         void set_selected_state(bool enable);
+        void set_large_touch_style();
     };
 
     class Radio : public Container {
@@ -48,7 +52,8 @@ namespace recompui {
         void set_focus_callback(std::function<void(bool)> callback);
         size_t num_options() const { return options.size(); }
         RadioOption* get_option_element(size_t option_index) { return options[option_index]; }
-        RadioOption* get_current_option_element() { return options.empty() ? nullptr : options[index]; }
+        RadioOption* get_current_option_element() { return options.empty() ? nullptr : options[std::min<size_t>(index, options.size() - 1)]; }
+        void set_large_touch_style();
         void set_nav_auto(NavDirection dir) override;
         void set_nav_none(NavDirection dir) override;
         void set_nav(NavDirection dir, Element* element) override;

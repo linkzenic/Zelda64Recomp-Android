@@ -260,7 +260,11 @@ void ModMenu::refresh_mods(bool scan_mods) {
 
 void ModMenu::open_mods_folder() {
     std::filesystem::path mods_directory = recomp::mods::get_mods_directory();
-#if defined(WIN32)
+#if defined(__ANDROID__)
+    zelda64::show_error_message_box(
+        "Mods",
+        "Use Install Mods to select files with the Android document picker.");
+#elif defined(WIN32)
     std::wstring path_wstr = mods_directory.wstring();
     ShellExecuteW(NULL, L"open", path_wstr.c_str(), NULL, NULL, SW_SHOWDEFAULT);
 #elif defined(__linux__)
@@ -323,15 +327,21 @@ void ModMenu::mod_selected(uint32_t mod_index) {
         Toggle *enable_toggle = mod_details_panel->get_enable_toggle();
         if (configure_enabled) {
             refresh_button->set_nav(NavDirection::Up, configure_button);
-            mods_folder_button->set_nav(NavDirection::Up, configure_button);
+            if (mods_folder_button != nullptr) {
+                mods_folder_button->set_nav(NavDirection::Up, configure_button);
+            }
         }
         else if (toggle_enabled) {
             refresh_button->set_nav(NavDirection::Up, enable_toggle);
-            mods_folder_button->set_nav(NavDirection::Up, enable_toggle);
+            if (mods_folder_button != nullptr) {
+                mods_folder_button->set_nav(NavDirection::Up, enable_toggle);
+            }
         }
         else {
             refresh_button->set_nav_manual(NavDirection::Up, mod_tab_id);
-            mods_folder_button->set_nav_manual(NavDirection::Up, mod_tab_id);
+            if (mods_folder_button != nullptr) {
+                mods_folder_button->set_nav_manual(NavDirection::Up, mod_tab_id);
+            }
         }
 
         // Navigation from the mod list.
@@ -695,10 +705,12 @@ ModMenu::ModMenu(Element *parent) : Element(parent) {
             refresh_button->add_pressed_callback([this](){ refresh_mods(true); });
             refresh_button->set_nav_manual(NavDirection::Up, mod_tab_id);
 
+#if !defined(__ANDROID__)
             mods_folder_button = context.create_element<Button>(footer_container, "Open Mods Folder", recompui::ButtonStyle::Primary);
             mods_folder_button->add_pressed_callback([this](){ open_mods_folder(); });
             mods_folder_button->set_nav(NavDirection::Up, configure_button);
             mods_folder_button->set_nav_manual(NavDirection::Up, mod_tab_id);
+#endif
         } // footer_container
     } // this
     

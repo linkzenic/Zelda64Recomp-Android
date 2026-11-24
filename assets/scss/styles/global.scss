@@ -88,45 +88,45 @@ button {
 
 @keyframes blue-pulse {
 	0% {
-		color: $color-secondary;
+		color: #35105F;
 	}
 
 	50% {
-		color: $color-secondary-l;
+		color: #562087;
 	}
 
 	100% { 
-		color: $color-secondary;
+		color: #35105F;
 	}
 }
 
 @keyframes blue-pulse-with-border {
 	0% {
-		border-color: $color-secondary;
-		color: $color-secondary;
+		border-color: #35105F;
+		color: #35105F;
 	}
 
 	50% {
-		border-color: $color-secondary-l;
-		color: $color-secondary-l;
+		border-color: #562087;
+		color: #562087;
 	}
 
 	100% {
-		border-color: $color-secondary; 
-		color: $color-secondary;
+		border-color: #35105F;
+		color: #35105F;
 	}
 }
 
 @keyframes blue-pulse-background {
 	0% {
-		background-color: $color-secondary;
+		background-color: #35105F;
 	}
 
 	50% {
-		background-color: $color-secondary-l;
+		background-color: #562087;
 	}
 
 	100% { 
-		background-color: $color-secondary;
+		background-color: #35105F;
 	}
 }

@@ -20,15 +20,18 @@
     position: relative;
     margin: 0;
     padding: space(20) space(24);
+    border-radius: space(14) space(14) 0 0;
     opacity: 0.9;
     background-color: rgba(0,0,0,0);
     color: $color-text-inactive;
 
     &:selected {
+        background-color: transparent;
+        decorator: vertical-gradient(#3D146838 #3D1468FF);
         color: $color-text;
 
         .tab__indicator {
-            background-color: $color-border-solid;
+            background-color: rgba(0, 0, 0, 0);
         }
 
         &:hover {
@@ -38,15 +41,19 @@
 
     .rmlui-window:not([mouse-active]) &:focus {
         transition: none;
-        animation: $focus-anim-border;
+        background-color: transparent;
+        decorator: vertical-gradient(#3D146838 #3D1468FF);
+        color: $color-text;
 
         &:selected .tab__indicator {
-            animation: $focus-anim-bg;
+            animation: none;
         }
     }
 
     &:focus, &:hover {
         opacity: 1;
+        background-color: transparent;
+        decorator: vertical-gradient(#3D146838 #3D1468FF);
         color: $color-text;
         cursor: pointer;
     }

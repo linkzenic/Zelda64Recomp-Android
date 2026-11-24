@@ -196,6 +196,9 @@ namespace recompui {
     }
     void Slider::set_min_value(double v) {
         min_value = v;
+        if (max_value != min_value) {
+            update_circle_position();
+        }
     }
 
     double Slider::get_min_value() const {
@@ -204,6 +207,9 @@ namespace recompui {
 
     void Slider::set_max_value(double v) {
         max_value = v;
+        if (max_value != min_value) {
+            update_circle_position();
+        }
     }
 
     double Slider::get_max_value() const {
@@ -238,6 +244,24 @@ namespace recompui {
         if (new_value != value) {
             set_value_internal(new_value, false, true);
         }
+    }
+
+    void Slider::set_large_touch_style() {
+        set_min_width(520.0f);
+        value_label->set_font_size(28.0f);
+        value_label->set_letter_spacing(2.52f);
+        value_label->set_line_height(32.0f);
+        value_label->set_min_width(90.0f);
+        value_label->set_max_width(90.0f);
+        value_label->set_margin_right(24.0f);
+        bar_element->set_height(6.0f);
+        bar_element->set_margin_top(14.0f);
+        circle_element->set_width(28.0f);
+        circle_element->set_height(28.0f);
+        circle_element->set_margin_top(-11.0f);
+        circle_element->set_margin_right(-14.0f);
+        circle_element->set_margin_left(-14.0f);
+        circle_element->set_border_radius(14.0f);
     }
 
 } // namespace recompui

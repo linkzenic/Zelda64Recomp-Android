@@ -66,11 +66,3 @@ RSPRecomp
 .idea
 build-*
 cmake-build-*
-
-# Android build output
-android/.gradle/
-android/build/
-android/app/build/
-android/app/.cxx/
-*.apk
-*.aab

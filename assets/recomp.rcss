@@ -40,7 +40,7 @@ h3, .tab {
 }
 
 .label-sm, .config-debug__select-wrapper .config-debug__select-label, .subtitle-title__disclaimer, .config-option__range-label, .config-option-range__label, .config-option__radio-tabs .config-option__tab-label,
-.config-option__list .config-option__tab-label, .centered-page__controls > label {
+.config-option__list .config-option__tab-label, .config-option__list .config-option__action-label, .centered-page__controls > label {
   font-size: 20dp;
   letter-spacing: 2.8dp;
   line-height: 20dp;
@@ -103,21 +103,21 @@ body, .config-debug__select-wrapper select, .config-debug__select-wrapper input,
 */
 .nav-vert, .nav-dir, .nav-all, .config-debug__select-wrapper select selectbox option, .config-debug__select-wrapper select, .config-debug__select-wrapper input, .toggle, .subtitle-title:not(:disabled, [disabled]), .menu-list-item:not(:disabled, [disabled]), .icon-button:not([disabled]), .button:not([disabled]), .button, .config-option-dropdown__select selectbox option, .config-option-dropdown__wrapper selectbox option, .config-option-textfield__select selectbox option, .config-option-textfield__wrapper selectbox option, .config-option-dropdown__select, .config-option-dropdown__wrapper, .config-option-textfield__select, .config-option-textfield__wrapper, .config-option__radio-tabs input.radio,
 .config-option__list input.radio, .config-option__radio-tabs .config-option__checkbox,
-.config-option__list .config-option__checkbox, .tab, .control-option__binding:not([disabled]) {
+.config-option__list .config-option__checkbox, .config-option__list .config-option__action-label, .tab, .control-option__binding:not([disabled]) {
   nav-up: auto;
   nav-down: auto;
 }
 
 .nav-horiz, .nav-dir, .nav-all, .config-debug__select-wrapper select selectbox option, .config-debug__select-wrapper select, .config-debug__select-wrapper input, .toggle, .subtitle-title:not(:disabled, [disabled]), .menu-list-item:not(:disabled, [disabled]), .icon-button:not([disabled]), .button:not([disabled]), .button, .config-option-dropdown__select selectbox option, .config-option-dropdown__wrapper selectbox option, .config-option-textfield__select selectbox option, .config-option-textfield__wrapper selectbox option, .config-option-dropdown__select, .config-option-dropdown__wrapper, .config-option-textfield__select, .config-option-textfield__wrapper, .config-option__radio-tabs input.radio,
 .config-option__list input.radio, .config-option__radio-tabs .config-option__checkbox,
-.config-option__list .config-option__checkbox, .tab, .control-option__binding:not([disabled]) {
+.config-option__list .config-option__checkbox, .config-option__list .config-option__action-label, .tab, .control-option__binding:not([disabled]) {
   nav-right: auto;
   nav-left: auto;
 }
 
 .nav-foc, .nav-all, .config-debug__select-wrapper select selectbox option, .config-debug__select-wrapper select, .config-debug__select-wrapper input, .toggle, .subtitle-title:not(:disabled, [disabled]), .menu-list-item:not(:disabled, [disabled]), .icon-button:not([disabled]), .button:not([disabled]), .button, .config-option-dropdown__select selectbox option, .config-option-dropdown__wrapper selectbox option, .config-option-textfield__select selectbox option, .config-option-textfield__wrapper selectbox option, .config-option-dropdown__select, .config-option-dropdown__wrapper, .config-option-textfield__select, .config-option-textfield__wrapper, .config-option__radio-tabs input.radio,
 .config-option__list input.radio, .config-option__radio-tabs .config-option__checkbox,
-.config-option__list .config-option__checkbox, .tab, .control-option__binding:not([disabled]) {
+.config-option__list .config-option__checkbox, .config-option__list .config-option__action-label, .tab, .control-option__binding:not([disabled]) {
   focus: auto;
   tab-index: auto;
 }
@@ -167,7 +167,7 @@ h3, .tab {
 }
 
 .label-sm, .config-debug__select-wrapper .config-debug__select-label, .subtitle-title__disclaimer, .config-option__range-label, .config-option-range__label, .config-option__radio-tabs .config-option__tab-label,
-.config-option__list .config-option__tab-label, .centered-page__controls > label {
+.config-option__list .config-option__tab-label, .config-option__list .config-option__action-label, .centered-page__controls > label {
   font-size: 20dp;
   letter-spacing: 2.8dp;
   line-height: 20dp;
@@ -364,7 +364,7 @@ input.checkbox {
 }
 
 scrollbarvertical, scrollbarhorizontal {
-  margin: 0;
+  margin: 4dp;
   border: 0;
 }
 scrollbarvertical slidertrack, scrollbarhorizontal slidertrack {
@@ -372,7 +372,7 @@ scrollbarvertical slidertrack, scrollbarhorizontal slidertrack {
   opacity: 0.05;
 }
 scrollbarvertical sliderbar, scrollbarhorizontal sliderbar {
-  border-radius: 5dp;
+  border-radius: 4dp;
   background: #DABAF7;
   opacity: 0.1;
 }
@@ -388,23 +388,26 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc, scrollbarhor
 }
 
 scrollbarvertical {
-  width: 12dp;
+  width: 28dp;
+  margin-left: 0;
 }
 scrollbarvertical slidertrack {
-  width: 12dp;
+  width: 28dp;
 }
 scrollbarvertical sliderbar {
-  width: 12dp;
+  width: 28dp;
+  min-height: 56dp;
 }
 
 scrollbarhorizontal {
-  height: 12dp;
+  height: 28dp;
 }
 scrollbarhorizontal slidertrack {
-  height: 12dp;
+  height: 28dp;
 }
 scrollbarhorizontal sliderbar {
-  height: 12dp;
+  height: 28dp;
+  min-width: 56dp;
 }
 
 .centered-page {
@@ -614,6 +617,7 @@ scrollbarhorizontal sliderbar {
   right: 0;
   bottom: 0;
   left: 0;
+  overflow: hidden;
   align-items: center;
   justify-content: center;
   opacity: 0;
@@ -658,28 +662,35 @@ scrollbarhorizontal sliderbar {
   position: relative;
   margin: 0;
   padding: 20dp 24dp;
+  border-radius: 14dp 14dp 0 0;
   opacity: 0.9;
   background-color: rgba(0, 0, 0, 0);
   color: rgba(255, 255, 255, 0.6);
 }
 .tab:selected {
+  background-color: transparent;
+  decorator: vertical-gradient(#3D146838 #3D1468FF);
   color: #F2F2F2;
 }
 .tab:selected .tab__indicator {
-  background-color: rgba(255, 255, 255, 0.6);
+  background-color: rgba(0, 0, 0, 0);
 }
 .tab:selected:hover {
   cursor: default;
 }
 .rmlui-window:not([mouse-active]) .tab:focus {
   transition: none;
-  animation: blue-pulse 0.75s infinite;
+  background-color: transparent;
+  decorator: vertical-gradient(#3D146838 #3D1468FF);
+  color: #F2F2F2;
 }
 .rmlui-window:not([mouse-active]) .tab:focus:selected .tab__indicator {
-  animation: blue-pulse-background 0.75s infinite;
+  animation: none;
 }
 .tab:focus, .tab:hover {
   opacity: 1;
+  background-color: transparent;
+  decorator: vertical-gradient(#3D146838 #3D1468FF);
   color: #F2F2F2;
   cursor: pointer;
 }
@@ -752,6 +763,11 @@ scrollbarhorizontal sliderbar {
   height: 100%;
   border-radius: 0dp;
   text-align: left;
+}
+
+.config__hz-wrapper > .config__wrapper {
+  max-height: 100%;
+  overflow-y: auto;
 }
 
 .config__header, .config__footer {
@@ -935,8 +951,8 @@ scrollbarhorizontal sliderbar {
 .rmlui-window:not([mouse-active]) .config-option__list input.radio:not(:disabled):focus + .config-option__tab-label {
   transition: none;
   animation: blue-pulse 0.75s infinite;
-  border-color: #17D6E8;
-  color: #17D6E8;
+  border-color: #35105F;
+  color: #35105F;
 }
 .config-option__radio-tabs input.radio:not(:disabled):focus + .config-option__tab-label, .config-option__radio-tabs input.radio:not(:disabled):hover + .config-option__tab-label,
 .config-option__list input.radio:not(:disabled):focus + .config-option__tab-label,
@@ -950,6 +966,34 @@ scrollbarhorizontal sliderbar {
 .config-option__radio-tabs input.radio:disabled + .config-option__tab-label:hover,
 .config-option__list input.radio:disabled + .config-option__tab-label:hover {
   cursor: default;
+}
+.config-option__radio-tabs .config-option__action-label,
+.config-option__list .config-option__action-label {
+  transition: color 0.05s linear-in-out, background-color 0.05s linear-in-out, opacity 0.05s linear-in-out;
+  display: block;
+  width: auto;
+  height: auto;
+  margin: 4dp 12dp 0;
+  padding: 8dp 0;
+  border-width: 0;
+  border-radius: 0;
+  background-color: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  tab-index: auto;
+}
+.config-option__radio-tabs .config-option__action-label:hover, .config-option__radio-tabs .config-option__action-label:focus,
+.config-option__list .config-option__action-label:hover,
+.config-option__list .config-option__action-label:focus {
+  color: #F2F2F2;
+  cursor: pointer;
+}
+.rmlui-window:not([mouse-active]) .config-option__radio-tabs .config-option__action-label:focus,
+.rmlui-window:not([mouse-active]) .config-option__list .config-option__action-label:focus {
+  transition: none;
+  animation: blue-pulse 0.75s infinite;
+  border-bottom: 1dp;
+  border-color: #35105F;
+  color: #35105F;
 }
 .config-option__radio-tabs input.range slidertrack,
 .config-option__list input.range slidertrack {
@@ -973,7 +1017,7 @@ scrollbarhorizontal sliderbar {
 .rmlui-window:not([mouse-active]) .config-option__radio-tabs input.range sliderbar:focus,
 .rmlui-window:not([mouse-active]) .config-option__list input.range sliderbar:focus {
   border-width: 1.1dp;
-  border-color: #3333FF;
+  border-color: #35105F;
   animation: blue-pulse-background 0.75s infinite;
 }
 .config-option__radio-tabs input.range sliderbar:hover,
@@ -1082,7 +1126,7 @@ scrollbarhorizontal sliderbar {
 }
 .rmlui-window:not([mouse-active]) .config-option-range__range-input sliderbar:focus {
   border-width: 1.1dp;
-  border-color: #3333FF;
+  border-color: #35105F;
   animation: blue-pulse-background 0.75s infinite;
 }
 .config-option-range__range-input sliderbar:hover {
@@ -1939,7 +1983,7 @@ scrollbarhorizontal sliderbar {
   justify-content: space-between;
   width: 100%;
   height: 100%;
-  background-color: #08070D;
+  background-color: rgba(8, 7, 13, 0);
 }
 
 .launcher__vertical-split {
@@ -1957,6 +2001,7 @@ scrollbarhorizontal sliderbar {
   right: 0;
   left: 50%;
   align-items: flex-end;
+  background-color: rgba(8, 7, 13, 0);
 }
 
 @keyframes slide-mm-bg-over {
@@ -1970,12 +2015,12 @@ scrollbarhorizontal sliderbar {
 .launcher__background-wrapper {
   display: flex;
   position: absolute;
-  top: -55vw;
-  right: -100%;
-  bottom: -50vw;
-  left: -70vw;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   transform: translateX(0dp);
   animation: 25s cubic-out 1 slide-mm-bg-over;
 }
@@ -1985,18 +2030,19 @@ scrollbarhorizontal sliderbar {
     opacity: 0;
   }
   100% {
-    opacity: 0.1;
+    opacity: 0.82;
   }
 }
 .launcher__background-mm {
   position: absolute;
   top: 0;
+  right: 0;
   bottom: 0;
   left: 0;
-  width: auto;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   animation: 2.5s cubic-in-out 1 fade-mm-in;
-  opacity: 0.1;
+  opacity: 0.82;
 }
 
 .launcher__title-quadrant {
@@ -2485,37 +2531,392 @@ button {
 
 @keyframes blue-pulse {
   0% {
-    color: #17D6E8;
+    color: #35105F;
   }
   50% {
-    color: #A2EFF6;
+    color: #562087;
   }
   100% {
-    color: #17D6E8;
+    color: #35105F;
   }
 }
 @keyframes blue-pulse-with-border {
   0% {
-    border-color: #17D6E8;
-    color: #17D6E8;
+    border-color: #35105F;
+    color: #35105F;
   }
   50% {
-    border-color: #A2EFF6;
-    color: #A2EFF6;
+    border-color: #562087;
+    color: #562087;
   }
   100% {
-    border-color: #17D6E8;
-    color: #17D6E8;
+    border-color: #35105F;
+    color: #35105F;
   }
 }
 @keyframes blue-pulse-background {
   0% {
-    background-color: #17D6E8;
+    background-color: #35105F;
   }
   50% {
-    background-color: #A2EFF6;
+    background-color: #562087;
   }
   100% {
-    background-color: #17D6E8;
+    background-color: #35105F;
   }
+}
+
+/* Android/touch ergonomics: keep the theme colors, but make controls easier to hit. */
+body, .config-debug__select-wrapper select, .config-debug__select-wrapper input, .config-description__contents, .config-option-dropdown__select, .config-option-dropdown__wrapper, .config-option-textfield__select, .config-option-textfield__wrapper, .config__wrapper p {
+  font-size: 26dp;
+  line-height: 32dp;
+}
+
+.label-md, .config-debug-option__label, .button, .config-option__title, .config-option--hz .config-option__title, .config-group__title, .control-option__label {
+  font-size: 34dp;
+  line-height: 38dp;
+}
+
+.label-sm, .config-debug__select-wrapper .config-debug__select-label, .subtitle-title__disclaimer, .config-option__range-label, .config-option-range__label, .config-option__radio-tabs .config-option__tab-label,
+.config-option__list .config-option__tab-label, .config-option__list .config-option__action-label, .centered-page__controls > label {
+  font-size: 26dp;
+  line-height: 30dp;
+}
+
+.config-option__details {
+  height: auto;
+  font-size: 24dp;
+  line-height: 30dp;
+}
+
+scrollbarvertical {
+  width: 40dp;
+}
+
+scrollbarhorizontal {
+  height: 40dp;
+}
+
+scrollbarvertical sliderbar {
+  min-height: 80dp;
+  border-radius: 10dp;
+}
+
+scrollbarhorizontal sliderbar {
+  min-width: 80dp;
+  border-radius: 10dp;
+}
+
+.tab {
+  min-height: 70dp;
+  padding: 24dp 32dp;
+  border-radius: 16dp 16dp 0 0;
+}
+
+.button {
+  min-height: 72dp;
+  padding: 20dp 32dp;
+  border-radius: 18dp;
+}
+
+.button--large {
+  min-height: 84dp;
+  padding: 24dp 36dp;
+}
+
+.icon-button {
+  width: 74dp;
+  min-width: 74dp;
+  max-width: 74dp;
+  height: 74dp;
+  min-height: 74dp;
+  max-height: 74dp;
+  border-radius: 20dp;
+}
+
+.icon-button svg {
+  width: 42dp;
+  height: 42dp;
+}
+
+.menu-list-item {
+  min-height: 86dp;
+  padding: 24dp 28dp;
+  border-radius: 18dp;
+}
+
+.config-option {
+  margin: 12dp 0dp 18dp;
+  padding: 14dp 16dp;
+  border-radius: 18dp;
+  background-color: rgba(190, 184, 219, 0.04);
+}
+
+.config-option__title {
+  padding: 0 4dp 6dp;
+}
+
+.config-option__wide-toggle {
+  color: #CCCCCC;
+  transition: color 0.05s linear-in-out, background-color 0.05s linear-in-out, border-color 0.05s linear-in-out;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 78dp;
+  padding: 20dp 24dp;
+  border-width: 1.1dp;
+  border-radius: 18dp;
+  border-color: rgba(255, 255, 255, 0.18);
+  background-color: rgba(255, 255, 255, 0.055);
+  cursor: pointer;
+  focus: auto;
+  tab-index: auto;
+  nav-up: auto;
+  nav-right: auto;
+  nav-down: auto;
+  nav-left: auto;
+}
+
+.config-option__wide-toggle:hover,
+.config-option__wide-toggle:focus {
+  color: #F2F2F2;
+  border-color: rgba(242, 242, 242, 0.85);
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.config-option__wide-toggle:active {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.config-option__wide-toggle--on {
+  border-color: rgba(242, 242, 242, 0.75);
+  background-color: rgba(185, 125, 242, 0.28);
+  color: #F2F2F2;
+}
+
+.config-option__wide-toggle--compact {
+  width: auto;
+  min-width: 420dp;
+  max-width: 560dp;
+}
+
+.rmlui-window:not([mouse-active]) .config-option__wide-toggle:focus {
+  animation: blue-pulse-with-border 0.75s infinite;
+}
+
+.config-option__wide-toggle-title {
+  font-size: 34dp;
+  font-weight: 700;
+  letter-spacing: 3.08dp;
+  line-height: 38dp;
+}
+
+.config-option__wide-toggle-value {
+  min-width: 92dp;
+  font-size: 28dp;
+  font-weight: 700;
+  letter-spacing: 2.8dp;
+  line-height: 32dp;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.config-option__radio-tabs .config-option__tab-label,
+.config-option__list .config-option__tab-label,
+.config-option__radio-tabs .config-option__action-label,
+.config-option__list .config-option__action-label {
+  flex: 0 0 auto;
+  height: 72dp;
+  min-height: 72dp;
+  min-width: 136dp;
+  margin: 8dp 10dp 0 0;
+  padding: 18dp 22dp 0dp;
+  border-width: 1.1dp;
+  border-radius: 16dp;
+  border-color: rgba(255, 255, 255, 0.18);
+  background-color: rgba(255, 255, 255, 0.055);
+  line-height: 32dp;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.config-option__radio-tabs input.radio:not(:disabled):checked + .config-option__tab-label,
+.config-option__list input.radio:not(:disabled):checked + .config-option__tab-label {
+  border-width: 1.1dp;
+  border-color: rgba(242, 242, 242, 0.75);
+  background-color: rgba(185, 125, 242, 0.28);
+  color: #F2F2F2;
+}
+
+.config-option__radio-tabs .config-option__action-label--selected,
+.config-option__list .config-option__action-label--selected {
+  border-width: 1.1dp;
+  border-color: rgba(185, 125, 242, 0.95);
+  background-color: rgba(185, 125, 242, 0.28);
+  color: #F2F2F2;
+}
+
+.config-option__radio-tabs input.radio:not(:disabled):focus + .config-option__tab-label,
+.config-option__radio-tabs input.radio:not(:disabled):hover + .config-option__tab-label,
+.config-option__list input.radio:not(:disabled):focus + .config-option__tab-label,
+.config-option__list input.radio:not(:disabled):hover + .config-option__tab-label,
+.config-option__radio-tabs .config-option__action-label:hover,
+.config-option__radio-tabs .config-option__action-label:focus,
+.config-option__list .config-option__action-label:hover,
+.config-option__list .config-option__action-label:focus {
+  border-color: rgba(242, 242, 242, 0.85);
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.rmlui-window:not([mouse-active]) .config-option__radio-tabs input.radio:not(:disabled):focus + .config-option__tab-label,
+.rmlui-window:not([mouse-active]) .config-option__list input.radio:not(:disabled):focus + .config-option__tab-label,
+.rmlui-window:not([mouse-active]) .config-option__radio-tabs .config-option__action-label:focus,
+.rmlui-window:not([mouse-active]) .config-option__list .config-option__action-label:focus {
+  border-width: 1.1dp;
+  border-color: #35105F;
+  animation: blue-pulse-with-border 0.75s infinite;
+}
+
+.config-option__radio-tabs input.range slidertrack,
+.config-option__list input.range slidertrack,
+.config-option-range__range-input slidertrack {
+  height: 4dp;
+  margin-top: 12dp;
+}
+
+.config-option__radio-tabs input.range sliderbar,
+.config-option__list input.range sliderbar,
+.config-option-range__range-input sliderbar {
+  width: 28dp;
+  height: 28dp;
+  margin-top: 0dp;
+  margin-right: -14dp;
+  margin-left: -14dp;
+  border-radius: 14dp;
+}
+
+.config-option-dropdown__select, .config-option-textfield__select {
+  min-height: 72dp;
+  padding: 20dp;
+}
+
+.control-option {
+  min-height: 0;
+  padding: 4dp 16dp 4dp 20dp;
+  border-radius: 8dp;
+}
+
+.control-option__label {
+  font-size: 28dp;
+  letter-spacing: 3.08dp;
+  line-height: 28dp;
+}
+
+.control-option__bindings {
+  height: 56dp;
+}
+
+.control-option__binding {
+  height: 56dp;
+  min-height: 56dp;
+  border-radius: 8dp;
+}
+
+.control-option .icon-button {
+  width: 53.8dp;
+  min-width: 53.8dp;
+  max-width: 53.8dp;
+  height: 53.8dp;
+  min-height: 53.8dp;
+  max-height: 53.8dp;
+  border-radius: 26.9dp;
+}
+
+.control-option .icon-button svg {
+  width: 32dp;
+  height: 32dp;
+}
+
+.toggle {
+  width: 176dp;
+  height: 80dp;
+  border-radius: 40dp;
+}
+
+.toggle .toggle__border {
+  border-radius: 40dp;
+}
+
+.toggle .toggle__floater {
+  width: 86dp;
+  height: 70dp;
+  border-radius: 35dp;
+}
+
+.toggle--checked .toggle__floater {
+  left: 86dp;
+}
+
+.launcher .menu-list-item {
+  justify-content: flex-end;
+  min-height: 96dp;
+  padding: 20dp 36dp;
+  border-width: 0;
+  border-radius: 22dp;
+  background-color: rgba(0, 0, 0, 0);
+  decorator: none;
+}
+
+.launcher .menu-list-item--right {
+  flex-direction: row;
+}
+
+.launcher .menu-list-item__bullet {
+  display: none;
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.launcher .menu-list-item__label {
+  font-family: chiaro;
+  font-size: 46dp;
+  font-weight: 700;
+  letter-spacing: 2.6dp;
+  line-height: 50dp;
+}
+
+.launcher .menu-list-item:focus:not(:disabled, [disabled]),
+.launcher .menu-list-item:hover:not(:disabled, [disabled]) {
+  color: #F2F2F2;
+  background-color: rgba(0, 0, 0, 0);
+  decorator: horizontal-gradient(#3D146800 #5B1E8F55);
+}
+
+.launcher .menu-list-item:active:not(:disabled, [disabled]) {
+  background-color: rgba(0, 0, 0, 0);
+  decorator: horizontal-gradient(#3D146800 #5B1E8F3D);
+}
+
+#conf-editor__save-editor-config .config-sub-menu-option--touch {
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0);
+  decorator: none;
+}
+
+#conf-editor__save-editor-config .config-sub-menu-option--touch:hover {
+  background-color: rgba(0, 0, 0, 0);
+  decorator: horizontal-gradient(#7A2AC600 #B97DF238);
+}
+
+#conf-editor__save-editor-config .config-sub-menu--touch {
+  width: 100%;
+}
+
+#conf-editor__save-editor-config .config-sub-menu--touch scrollbarvertical sliderbar,
+#conf-editor__save-editor-config .config-sub-menu--touch scrollbarhorizontal sliderbar {
+  min-width: 40dp;
+  min-height: 80dp;
+  border-radius: 20dp;
 }

@@ -10,6 +10,7 @@ struct RecompCustomElement {
 static RecompCustomElement custom_elements[] = {
     CUSTOM_ELEMENT("recomp-mod-menu", recompui::ElementModMenu),
     CUSTOM_ELEMENT("recomp-config-sub-menu", recompui::ElementConfigSubMenu),
+    CUSTOM_ELEMENT("recomp-save-editor-config", recompui::ElementSaveEditorConfig),
 };
 
 void recompui::register_custom_elements() {

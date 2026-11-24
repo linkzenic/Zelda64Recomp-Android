@@ -12,8 +12,25 @@ static std::string version_string;
 
 Rml::DataModelHandle model_handle;
 bool mm_rom_valid = false;
+bool safe_mode_enabled = false;
 
 extern std::vector<recomp::GameEntry> supported_games;
+
+static bool n64_mode_from_env() {
+    const char* safe_mode = std::getenv("APP_SAFE_MODE");
+    const char* n64_mode = std::getenv("APP_N64_MODE");
+    return (safe_mode != nullptr && safe_mode[0] == '1') ||
+        (n64_mode != nullptr && n64_mode[0] == '1');
+}
+
+static void set_n64_mode(bool enabled) {
+    safe_mode_enabled = enabled;
+    setenv("APP_SAFE_MODE", enabled ? "1" : "0", 1);
+    setenv("APP_N64_MODE", enabled ? "1" : "0", 1);
+    if (model_handle) {
+        model_handle.DirtyVariable("safe_mode_enabled");
+    }
+}
 
 void select_rom() {
     nfdnchar_t* native_path = nullptr;
@@ -59,6 +76,7 @@ class LauncherMenu : public recompui::MenuController {
 public:
     LauncherMenu() {
         mm_rom_valid = recomp::is_rom_valid(supported_games[0].game_id);
+        safe_mode_enabled = n64_mode_from_env();
     }
     ~LauncherMenu() override {
 
@@ -80,6 +98,14 @@ public:
         );
         recompui::register_event(listener, "start_game",
             [](const std::string& param, Rml::Event& event) {
+                set_n64_mode(false);
+                recomp::start_game(supported_games[0].game_id);
+                recompui::hide_all_contexts();
+            }
+        );
+        recompui::register_event(listener, "start_safe_mode",
+            [](const std::string& param, Rml::Event& event) {
+                set_n64_mode(true);
                 recomp::start_game(supported_games[0].game_id);
                 recompui::hide_all_contexts();
             }
@@ -115,14 +141,26 @@ public:
         Rml::DataModelConstructor constructor = context->CreateDataModel("launcher_model");
 
         constructor.Bind("mm_rom_valid", &mm_rom_valid);
+        constructor.Bind("safe_mode_enabled", &safe_mode_enabled);
+        constructor.BindFunc("is_android", [](Rml::Variant& out) {
+#if defined(__ANDROID__)
+            out = true;
+#else
+            out = false;
+#endif
+        });
 
-        version_string = recomp::get_project_version().to_string();
 #if defined(__ANDROID__)
         if (const char* android_version_name = std::getenv("APP_ANDROID_VERSION_NAME");
             android_version_name != nullptr && android_version_name[0] != '\0') {
-            version_string += " Android ";
+            version_string = "Linkzenic Android Fork v";
             version_string += android_version_name;
         }
+        else {
+            version_string = "Linkzenic Android Fork";
+        }
+#else
+        version_string = recomp::get_project_version().to_string();
 #endif
         constructor.Bind("version_number", &version_string);
 

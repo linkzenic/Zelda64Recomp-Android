@@ -152,6 +152,9 @@ class RmlRenderInterface_RT64_impl : public Rml::RenderInterfaceCompatibility {
     RT64::RenderInputSlot vertex_slot_{ 0, sizeof(Rml::Vertex) };
     RT64::RenderCommandList* list_ = nullptr;
     bool scissor_enabled_ = false;
+    bool launcher_background_visible_ = false;
+    Rml::TextureHandle launcher_background_handle_ = 0;
+    Rml::Vector2i launcher_background_dimensions_ = {};
     std::vector<std::unique_ptr<RT64::RenderBuffer>> stale_buffers_{};
     moodycamel::ConcurrentQueue<ImageFromBytes> image_from_bytes_queue;
     std::unordered_map<std::string, ImageFromBytes> image_from_bytes_map;
@@ -159,6 +162,7 @@ public:
     RmlRenderInterface_RT64_impl(RT64::RenderInterface* interface, RT64::RenderDevice* device) {
         interface_ = interface;
         device_ = device;
+
         // Enable 4X MSAA if supported by the device.
         const RT64::RenderSampleCounts desired_sample_count = RT64::RenderSampleCount::COUNT_8;
         if (device_->getSampleCountsSupported(SwapChainFormat) & desired_sample_count) {
@@ -625,6 +629,58 @@ public:
         }
     }
 
+    void render_launcher_background() {
+        if (!launcher_background_visible_) {
+            return;
+        }
+
+        if (launcher_background_handle_ == 0) {
+            if (!LoadTexture(launcher_background_handle_, launcher_background_dimensions_, "launcher_background")) {
+                std::fprintf(stderr, "Launcher background texture upload failed\n");
+                return;
+            }
+        }
+
+        const float screen_aspect = window_height_ > 0
+            ? static_cast<float>(window_width_) / static_cast<float>(window_height_)
+            : 1.0f;
+        const float image_aspect = launcher_background_dimensions_.y > 0
+            ? static_cast<float>(launcher_background_dimensions_.x) / static_cast<float>(launcher_background_dimensions_.y)
+            : screen_aspect;
+
+        float u0 = 0.0f;
+        float u1 = 1.0f;
+        float v0 = 0.0f;
+        float v1 = 1.0f;
+
+        if (image_aspect > screen_aspect) {
+            const float visible_width = screen_aspect / image_aspect;
+            const float crop = (1.0f - visible_width) * 0.5f;
+            u0 = crop;
+            u1 = 1.0f - crop;
+        }
+        else if (image_aspect < screen_aspect) {
+            const float visible_height = image_aspect / screen_aspect;
+            const float crop = (1.0f - visible_height) * 0.5f;
+            v0 = crop;
+            v1 = 1.0f - crop;
+        }
+
+        const Rml::ColourbPremultiplied white(255, 255, 255, 255);
+        Rml::Vertex vertices[4] = {
+            { Rml::Vector2f(0.0f, 0.0f), white, Rml::Vector2f(u0, v0) },
+            { Rml::Vector2f(static_cast<float>(window_width_), 0.0f), white, Rml::Vector2f(u1, v0) },
+            { Rml::Vector2f(static_cast<float>(window_width_), static_cast<float>(window_height_)), white, Rml::Vector2f(u1, v1) },
+            { Rml::Vector2f(0.0f, static_cast<float>(window_height_)), white, Rml::Vector2f(u0, v1) },
+        };
+        int indices[6] = { 0, 1, 2, 0, 2, 3 };
+        RenderGeometry(vertices, 4, indices, 6, launcher_background_handle_, Rml::Vector2f(0.0f, 0.0f));
+    }
+
+    void set_launcher_background_visible(bool visible) {
+        launcher_background_visible_ = visible;
+    }
+
     void end(RT64::RenderCommandList* list, RT64::RenderFramebuffer* framebuffer) {
         // Draw the texture were rendered the UI in to the swap chain framebuffer if MSAA is enabled.
         if (multisampling_.sampleCount > 1) {
@@ -709,6 +765,18 @@ void recompui::RmlRenderInterface_RT64::end(RT64::RenderCommandList* list, RT64:
     assert(static_cast<bool>(impl));
 
     impl->end(list, framebuffer);
+}
+
+void recompui::RmlRenderInterface_RT64::set_launcher_background_visible(bool visible) {
+    assert(static_cast<bool>(impl));
+
+    impl->set_launcher_background_visible(visible);
+}
+
+void recompui::RmlRenderInterface_RT64::render_launcher_background() {
+    assert(static_cast<bool>(impl));
+
+    impl->render_launcher_background();
 }
 
 void recompui::RmlRenderInterface_RT64::queue_image_from_bytes_file(const std::string &src, const std::vector<char> &bytes) {

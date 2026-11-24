@@ -1,0 +1,785 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fc06930..4f16f81 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -46,17 +46,17 @@ if (WIN32)
+     # Dependencies that must be next to the DLL.
+     configure_file("${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxcompiler.dll" "dxcompiler.dll" COPYONLY)
+     configure_file("${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxil.dll" "dxil.dll" COPYONLY)
+-elseif (APPLE)
+-    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
++elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
++    if (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+         # find zlib and include in dyld path
+         find_library(ZLIB_LIBRARY NAMES z)
+         get_filename_component(ZLIB_PATH ${ZLIB_LIBRARY} DIRECTORY)
+ 
+-        set (DXC "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/dxc/lib/x64:${ZLIB_PATH}" "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxc-macos")
+-        set (SPIRVCROSS "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/spirv-cross/lib/x64:$ENV{DYLD_LIBRARY_PATH}" "${PROJECT_SOURCE_DIR}/src/contrib/spirv-cross/bin/x64/spirv-cross")
++        set (DXC ${CMAKE_COMMAND} -E env "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/dxc/lib/x64:${ZLIB_PATH}" "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxc-macos")
++        set (SPIRVCROSS ${CMAKE_COMMAND} -E env "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/spirv-cross/lib/x64:$ENV{DYLD_LIBRARY_PATH}" "${PROJECT_SOURCE_DIR}/src/contrib/spirv-cross/bin/x64/spirv-cross")
+     else()
+-        set (DXC "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/dxc/lib/arm64:${ZLIB_PATH}" "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/arm64/dxc-macos")
+-        set (SPIRVCROSS "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/spirv-cross/lib/arm64:$ENV{DYLD_LIBRARY_PATH}" "${PROJECT_SOURCE_DIR}/src/contrib/spirv-cross/bin/arm64/spirv-cross")
++        set (DXC ${CMAKE_COMMAND} -E env "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/dxc/lib/arm64:${ZLIB_PATH}" "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/arm64/dxc-macos")
++        set (SPIRVCROSS ${CMAKE_COMMAND} -E env "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/spirv-cross/lib/arm64:$ENV{DYLD_LIBRARY_PATH}" "${PROJECT_SOURCE_DIR}/src/contrib/spirv-cross/bin/arm64/spirv-cross")
+     endif()
+ else()
+     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+@@ -70,9 +70,13 @@ set(ZSTD_LEGACY_SUPPORT OFF)
+ set(ZSTD_BUILD_STATIC ON)
+ set(ZSTD_BUILD_SHARED OFF)
+ 
+-add_subdirectory(src/tools/file_to_c)
++if (NOT TARGET file_to_c)
++    add_subdirectory(src/tools/file_to_c)
++endif()
+ add_subdirectory(src/contrib/re-spirv)
+-add_subdirectory(src/contrib/nativefiledialog-extended)
++if (NOT TARGET nfd)
++    add_subdirectory(src/contrib/nativefiledialog-extended)
++endif()
+ add_subdirectory(src/contrib/zstd/build/cmake)
+ 
+ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+@@ -84,7 +88,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+     endif()
+     add_compile_options(-Wno-nullability-completeness -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -Wno-missing-field-initializers)
+     # imgui currently triggers some compiler warnings on clang 19 for function casts which leads to a failed build, so disable that warning on clang 19+
+-    if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.0)
++    if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.0 AND NOT ANDROID)
+         add_compile_options(-Wno-cast-function-type-mismatch)
+     endif()
+     if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 20.0)
+@@ -295,7 +299,7 @@ add_compile_definitions(
+     IMGUI_IMPL_VULKAN_NO_PROTOTYPES
+ )
+ 
+-if (CMAKE_SYSTEM_NAME MATCHES "Linux" AND RT64_SDL_WINDOW_VULKAN)
++if ((CMAKE_SYSTEM_NAME MATCHES "Linux" OR ANDROID) AND RT64_SDL_WINDOW_VULKAN)
+     add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
+ endif()
+ 
+diff --git a/src/common/rt64_user_paths.cpp b/src/common/rt64_user_paths.cpp
+index f38d8eb..150b81e 100644
+--- a/src/common/rt64_user_paths.cpp
++++ b/src/common/rt64_user_paths.cpp
+@@ -4,6 +4,8 @@
+ 
+ #include "rt64_user_paths.h"
+ 
++#include <cstdlib>
++
+ #if defined(__linux__)
+ #   include <unistd.h>
+ #   include <pwd.h>
+@@ -24,7 +26,12 @@ namespace RT64 {
+     std::filesystem::path UserPaths::detectDataPath(const std::filesystem::path &appId) {
+         std::filesystem::path resultPath;
+ 
+-#   if defined(_WIN32)
++#   if defined(__ANDROID__)
++        const char* appDataPath = std::getenv("APP_FOLDER_PATH");
++        if (appDataPath != nullptr && appDataPath[0] != '\0') {
++            resultPath = std::filesystem::path{ appDataPath } / appId;
++        }
++#   elif defined(_WIN32)
+         PWSTR knownPath = NULL;
+         HRESULT result = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &knownPath);
+         if (result == S_OK) {
+diff --git a/src/hle/rt64_application.cpp b/src/hle/rt64_application.cpp
+index 4e83f71..8b996ef 100644
+--- a/src/hle/rt64_application.cpp
++++ b/src/hle/rt64_application.cpp
+@@ -261,7 +261,12 @@ namespace RT64 {
+ 
+         // Create the swap chain with the buffer count specified from the configuration.
+         const uint32_t bufferCount = (userConfig.displayBuffering == UserConfiguration::DisplayBuffering::Triple) ? 3 : 2;
+-        swapChain = presentGraphicsWorker->commandQueue->createSwapChain(appWindow->windowHandle, bufferCount, RenderFormat::B8G8R8A8_UNORM);
++#if defined(__ANDROID__)
++        constexpr RenderFormat swapChainFormat = RenderFormat::R8G8B8A8_UNORM;
++#else
++        constexpr RenderFormat swapChainFormat = RenderFormat::B8G8R8A8_UNORM;
++#endif
++        swapChain = presentGraphicsWorker->commandQueue->createSwapChain(appWindow->windowHandle, bufferCount, swapChainFormat);
+ 
+         // Before configuring multisampling, make sure the device actually supports it for the formats we'll use. If it doesn't, turn off antialiasing in the configuration.
+         const RenderSampleCounts colorSampleCounts = device->getSampleCountsSupported(RenderTarget::colorBufferFormat(usesHDR));
+diff --git a/src/hle/rt64_application_window.cpp b/src/hle/rt64_application_window.cpp
+index 07ef521..c60bc47 100755
+--- a/src/hle/rt64_application_window.cpp
++++ b/src/hle/rt64_application_window.cpp
+@@ -104,7 +104,10 @@ namespace RT64 {
+         bounds.width = rect.right - rect.left;
+         bounds.height = rect.bottom - rect.top;
+ #   elif defined(__ANDROID__)
+-        static_assert(false && "Android unimplemented");
++        bounds.left = SDL_WINDOWPOS_CENTERED;
++        bounds.top = SDL_WINDOWPOS_CENTERED;
++        bounds.width = Width;
++        bounds.height = Height;
+ #   elif defined(__linux__) || defined(__APPLE__)
+         if (SDL_VideoInit(nullptr) != 0) {
+             printf("Failed to init SDL2 video: %s\n", SDL_GetError());
+@@ -148,7 +151,7 @@ namespace RT64 {
+ #   elif defined(RT64_SDL_WINDOW_VULKAN)
+         windowHandle = sdlWindow;
+ #   elif defined(__ANDROID__)
+-        static_assert(false && "Android unimplemented");
++        windowHandle = sdlWindow;
+ #   elif defined(__linux__)
+         windowHandle.display = wmInfo.info.x11.display;
+         windowHandle.window = wmInfo.info.x11.window;
+diff --git a/src/hle/rt64_present_queue.cpp b/src/hle/rt64_present_queue.cpp
+index 8579695..0b6167a 100644
+--- a/src/hle/rt64_present_queue.cpp
++++ b/src/hle/rt64_present_queue.cpp
+@@ -92,6 +92,17 @@ namespace RT64 {
+         presentThread = new std::thread(&PresentQueue::threadLoop, this);
+     }
+ 
++    void PresentQueue::pausePresentation() {
++        presentationPaused = true;
++        waitForIdle();
++    }
++
++    void PresentQueue::resumePresentation() {
++        surfaceRecreationRequired = true;
++        presentationPaused = false;
++        cursorCondition.notify_all();
++    }
++
+     void PresentQueue::threadPresent(const Present &present, bool &swapChainValid) {
+         FramebufferManager &fbManager = ext.sharedResources->framebufferManager;
+         RenderTargetManager &targetManager = ext.sharedResources->renderTargetManager;
+@@ -466,16 +477,37 @@ namespace RT64 {
+             {
+                 std::unique_lock<std::mutex> cursorLock(cursorMutex);
+                 cursorCondition.wait(cursorLock, [&]() {
+-                    return (writeCursor != threadCursor) || !presentThreadRunning;
++                    return (writeCursor != threadCursor) || surfaceRecreationRequired || !presentThreadRunning;
+                 });
+ 
+-                if (presentThreadRunning) {
++                if (presentThreadRunning && (writeCursor != threadCursor)) {
+                     processCursor = threadCursor;
+                     threadCursor = (threadCursor + 1) % presents.size();
+                     skipPresent = (writeCursor != threadCursor);
+                 }
+             }
+ 
++            if (processCursor >= 0 && presentationPaused) {
++                std::unique_lock<std::mutex> cursorLock(cursorMutex);
++                cursorCondition.wait(cursorLock, [&]() {
++                    return !presentationPaused || !presentThreadRunning;
++                });
++            }
++
++            if (!presentThreadRunning) {
++                continue;
++            }
++
++            if (surfaceRecreationRequired.exchange(false)) {
++                std::unique_lock<std::mutex> threadLock(threadMutex);
++                swapChainFramebuffers.clear();
++                swapChainValid = ext.swapChain->recreateSurface();
++                presentWaitEnabled = detectPresentWait();
++                if (swapChainValid) {
++                    ext.sharedResources->setSwapChainSize(ext.swapChain->getWidth(), ext.swapChain->getHeight());
++                }
++            }
++
+             if (processCursor >= 0) {
+                 std::unique_lock<std::mutex> threadLock(threadMutex);
+                 const bool needsResize = ext.swapChain->needsResize() || !swapChainValid;
+@@ -555,4 +587,4 @@ namespace RT64 {
+             ext.presentGraphicsWorker->wait();
+         }
+     }
+-};
+\ No newline at end of file
++};
+diff --git a/src/hle/rt64_present_queue.h b/src/hle/rt64_present_queue.h
+index 7bec992..e0291ac 100644
+--- a/src/hle/rt64_present_queue.h
++++ b/src/hle/rt64_present_queue.h
+@@ -42,6 +42,8 @@ namespace RT64 {
+         std::thread *presentThread = nullptr;
+         std::mutex threadMutex;
+         std::atomic<bool> presentThreadRunning = false;
++        std::atomic<bool> presentationPaused = false;
++        std::atomic<bool> surfaceRecreationRequired = false;
+         std::recursive_mutex inspectorMutex;
+         std::mutex screenFbChangePoolMutex;
+         Framebuffer scratchFb;
+@@ -67,6 +69,8 @@ namespace RT64 {
+         void waitForIdle();
+         void waitForPresentId(uint64_t waitId);
+         void setup(const External &ext);
++        void pausePresentation();
++        void resumePresentation();
+         void threadPresent(const Present &present, bool &swapChainValid);
+         void skipInterpolation();
+         void notifyPresentId(const Present &present);
+@@ -74,4 +78,4 @@ namespace RT64 {
+         void threadAdvanceBarrier();
+         void threadLoop();
+     };
+-};
+\ No newline at end of file
++};
+diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
+index c4cf1bf..ce87239 100644
+--- a/src/render/rt64_framebuffer_renderer.cpp
++++ b/src/render/rt64_framebuffer_renderer.cpp
+@@ -1689,6 +1689,11 @@ namespace RT64 {
+                         }
+ 
+                         triangles.scissor = convertFixedRect(call.callDesc.scissorRect, p.resolutionScale, p.fbWidth, invRatioScale, extOriginPercentage, int32_t(horizontalMisalignment), call.callDesc.scissorLeftOrigin, call.callDesc.scissorRightOrigin);
++                        // Widescreen alignment can extend the scissor past the render target.
++                        triangles.scissor.left = std::max(triangles.scissor.left, 0);
++                        triangles.scissor.top = std::max(triangles.scissor.top, 0);
++                        triangles.scissor.right = std::min(triangles.scissor.right, int32_t(p.targetWidth));
++                        triangles.scissor.bottom = std::min(triangles.scissor.bottom, int32_t(p.targetHeight));
+                         
+                         if (triangles.vertexTestZ) {
+                             if ((proj.type == Projection::Type::Perspective) || (proj.type == Projection::Type::Orthographic)) {
+@@ -1926,4 +1931,4 @@ namespace RT64 {
+         unsigned int im3dVertexCount;
+     };
+ };
+-*/
+\ No newline at end of file
++*/
+diff --git a/src/render/rt64_texture_cache.cpp b/src/render/rt64_texture_cache.cpp
+index 35dd269..c65e9c6 100644
+--- a/src/render/rt64_texture_cache.cpp
++++ b/src/render/rt64_texture_cache.cpp
+@@ -1513,7 +1513,8 @@ namespace RT64 {
+                 if (fileSystems[i]->load(ReplacementDatabaseFilename, databaseBytes)) {
+                     try {
+                         ReplacementDatabase db;
+-                        db = json::parse(databaseBytes.begin(), databaseBytes.end(), nullptr, true);
++                        const char* databaseBegin = reinterpret_cast<const char*>(databaseBytes.data());
++                        db = json::parse(databaseBegin, databaseBegin + databaseBytes.size(), nullptr, true);
+ 
+                         if (db.config.hashVersion <= TMEMHasher::CurrentHashVersion) {
+                             db.resolvePaths(fileSystems[i].get(), uint32_t(i), fileSystemResolvedPaths[i], false, nullptr, &fileSystemStreamSets[i]);
+diff --git a/src/rhi/rt64_render_interface.h b/src/rhi/rt64_render_interface.h
+index a470113..e702d68 100644
+--- a/src/rhi/rt64_render_interface.h
++++ b/src/rhi/rt64_render_interface.h
+@@ -84,6 +84,7 @@ namespace RT64 {
+         virtual bool present(uint32_t textureIndex, RenderCommandSemaphore **waitSemaphores, uint32_t waitSemaphoreCount) = 0;
+         virtual void wait() = 0;
+         virtual bool resize() = 0;
++        virtual bool recreateSurface() { return resize(); }
+         virtual bool needsResize() const = 0;
+         virtual void setVsyncEnabled(bool vsyncEnabled) = 0;
+         virtual bool isVsyncEnabled() const = 0;
+diff --git a/src/vulkan/rt64_vulkan.cpp b/src/vulkan/rt64_vulkan.cpp
+index c814269..f25c0e5 100644
+--- a/src/vulkan/rt64_vulkan.cpp
++++ b/src/vulkan/rt64_vulkan.cpp
+@@ -10,8 +10,15 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <climits>
++#include <cstdlib>
+ #include <unordered_map>
+ 
++#if defined(ZELDA_ANDROID_ADRENOTOOLS)
++#include <android/log.h>
++#include <dlfcn.h>
++#include <adrenotools/driver.h>
++#endif
++
+ #if DLSS_ENABLED
+ #   include "render/rt64_dlss.h"
+ #endif
+@@ -31,6 +38,9 @@
+ // - Fix resource pools.
+ 
+ namespace RT64 {
++#if defined(ZELDA_ANDROID_ADRENOTOOLS)
++    static void *customVulkanLibrary = nullptr;
++#endif
+     // Backend constants.
+ 
+     // Required buffer alignment for acceleration structures.
+@@ -93,6 +103,40 @@ namespace RT64 {
+ 
+     // Common functions.
+ 
++    static constexpr bool queueFamilySupportsFlags(VkQueueFlags queueFlags, VkQueueFlags requiredFlags) {
++        // Vulkan guarantees transfer operations on graphics and compute queues even when a
++        // driver does not explicitly report VK_QUEUE_TRANSFER_BIT for the family.
++        if ((queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0) {
++            queueFlags |= VK_QUEUE_TRANSFER_BIT;
++        }
++
++        return (queueFlags & requiredFlags) == requiredFlags;
++    }
++
++    static_assert(queueFamilySupportsFlags(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT,
++        VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT));
++    static_assert(queueFamilySupportsFlags(VK_QUEUE_COMPUTE_BIT,
++        VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT));
++    static_assert(!queueFamilySupportsFlags(0, VK_QUEUE_TRANSFER_BIT));
++
++    static bool pickCompositeAlpha(VkCompositeAlphaFlagsKHR supportedFlags, VkCompositeAlphaFlagBitsKHR &pickedFlag) {
++        constexpr VkCompositeAlphaFlagBitsKHR PreferredFlags[] = {
++            VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
++            VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
++            VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
++            VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR
++        };
++
++        for (VkCompositeAlphaFlagBitsKHR flag : PreferredFlags) {
++            if ((supportedFlags & flag) != 0) {
++                pickedFlag = flag;
++                return true;
++            }
++        }
++
++        return false;
++    }
++
+     static uint32_t roundUp(uint32_t value, uint32_t powerOf2Alignment) {
+         return (value + powerOf2Alignment - 1) & ~(powerOf2Alignment - 1);
+     }
+@@ -1743,11 +1787,13 @@ namespace RT64 {
+         if (desc.lastRangeIsBoundless) {
+             assert((desc.descriptorRangesCount > 0) && "There must be at least one descriptor set to define the last range as boundless.");
+ 
+-            // Ensure at least one entry is created for boundless ranges.
++            // Ensure at least one entry is created for boundless ranges. Reserve enough pool
++            // capacity for the layout's declared maximum as some Vulkan implementations account
++            // variable descriptor bindings against that limit during allocation.
+             boundlessRangeSize = std::max(desc.boundlessRangeSize, 1U);
+ 
+             const RenderDescriptorRange &lastDescriptorRange = desc.descriptorRanges[desc.descriptorRangesCount - 1];
+-            typeCounts[toVk(lastDescriptorRange.type)] += boundlessRangeSize;
++            typeCounts[toVk(lastDescriptorRange.type)] += std::max(boundlessRangeSize, lastDescriptorRange.count);
+             rangeCount--;
+         }
+ 
+@@ -2005,37 +2051,49 @@ namespace RT64 {
+         }
+ 
+         VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
+-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
++        res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed with error code 0x%X.\n", res);
++            return;
++        }
+ 
+         // Pick an alpha compositing mode
+-        if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+-            pickedAlphaFlag = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+-        }
+-        else if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) {
+-            pickedAlphaFlag = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+-        }
+-        else {
+-            fprintf(stderr, "No known supported alpha compositing mode\n");
++        if (!pickCompositeAlpha(surfaceCapabilities.supportedCompositeAlpha, pickedAlphaFlag)) {
++            fprintf(stderr, "No supported alpha compositing mode was found.\n");
+             return;
+         }
+ 
+-        // Make sure maxImageCount is never below minImageCount, as it's allowed to be zero.
+-        surfaceCapabilities.maxImageCount = std::max(surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount);
+-
+-        // Clamp the requested buffer count between the bounds of the surface capabilities.
+-        this->textureCount = std::clamp(textureCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount);
++        // A maximum of zero means the surface does not impose a maximum image count.
++        const uint32_t maxImageCount = (surfaceCapabilities.maxImageCount == 0) ? UINT32_MAX : surfaceCapabilities.maxImageCount;
++        this->textureCount = std::clamp(textureCount, surfaceCapabilities.minImageCount, maxImageCount);
+ 
+         uint32_t surfaceFormatCount = 0;
+-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
++        res = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
++        if ((res != VK_SUCCESS) || (surfaceFormatCount == 0)) {
++            fprintf(stderr, "Unable to enumerate Vulkan surface formats (result 0x%X, count %u).\n", res, surfaceFormatCount);
++            return;
++        }
+ 
+         std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
+-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, surfaceFormats.data());
++        res = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, surfaceFormats.data());
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "Unable to read Vulkan surface formats (result 0x%X).\n", res);
++            return;
++        }
+ 
+         uint32_t presentModeCount = 0;
+-        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
++        res = vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
++        if ((res != VK_SUCCESS) || (presentModeCount == 0)) {
++            fprintf(stderr, "Unable to enumerate Vulkan present modes (result 0x%X, count %u).\n", res, presentModeCount);
++            return;
++        }
+ 
+         std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+-        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.data());
++        res = vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.data());
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "Unable to read Vulkan present modes (result 0x%X).\n", res);
++            return;
++        }
+         immediatePresentModeSupported = std::find(presentModes.begin(), presentModes.end(), VK_PRESENT_MODE_IMMEDIATE_KHR) != presentModes.end();
+ 
+         // Check if the format we requested is part of the supported surface formats.
+@@ -2068,18 +2126,6 @@ namespace RT64 {
+         // FIFO is guaranteed to be supported.
+         requiredPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+ 
+-        // Pick an alpha compositing mode, prefer opaque over inherit.
+-        if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+-            pickedAlphaFlag = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+-        }
+-        else if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) {
+-            pickedAlphaFlag = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+-        }
+-        else {
+-            fprintf(stderr, "No supported alpha compositing mode was found.\n");
+-            return;
+-        }
+-
+         // Parent command queue should track this swap chain.
+         commandQueue->swapChains.insert(this);
+     }
+@@ -2162,9 +2208,36 @@ namespace RT64 {
+         // Destroy any image view references to the current swap chain.
+         releaseImageViews();
+ 
+-        // We don't actually need to query the surface capabilities but the validation layer seems to cache the valid extents from this call.
+         VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
+-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(commandQueue->device->physicalDevice, surface, &surfaceCapabilities);
++        VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(commandQueue->device->physicalDevice, surface, &surfaceCapabilities);
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed while resizing with error code 0x%X.\n", res);
++            return false;
++        }
++
++        if ((surfaceCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == 0) {
++            fprintf(stderr, "The Vulkan surface does not support color-attachment swapchain images.\n");
++            return false;
++        }
++
++        VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
++        if ((surfaceCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0) {
++            imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
++        }
++
++        VkSurfaceTransformFlagBitsKHR preTransform = surfaceCapabilities.currentTransform;
++        if ((surfaceCapabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) != 0) {
++            preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
++        }
++
++        if (surfaceCapabilities.currentExtent.width != UINT32_MAX) {
++            width = surfaceCapabilities.currentExtent.width;
++            height = surfaceCapabilities.currentExtent.height;
++        }
++        else {
++            width = std::clamp(width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
++            height = std::clamp(height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
++        }
+ 
+         createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+         createInfo.surface = surface;
+@@ -2174,15 +2247,18 @@ namespace RT64 {
+         createInfo.imageExtent.width = width;
+         createInfo.imageExtent.height = height;
+         createInfo.imageArrayLayers = 1;
+-        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
++        createInfo.imageUsage = imageUsage;
+         createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+-        createInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
++        createInfo.preTransform = preTransform;
+         createInfo.compositeAlpha = pickedAlphaFlag;
+         createInfo.presentMode = requiredPresentMode;
+         createInfo.clipped = VK_TRUE;
+         createInfo.oldSwapchain = vk;
+ 
+-        VkResult res = vkCreateSwapchainKHR(commandQueue->device->vk, &createInfo, nullptr, &vk);
++        fprintf(stderr, "Vulkan swapchain: extent=%ux%u, usage=0x%X, transform=0x%X, alpha=0x%X.\n",
++            width, height, imageUsage, preTransform, pickedAlphaFlag);
++
++        res = vkCreateSwapchainKHR(commandQueue->device->vk, &createInfo, nullptr, &vk);
+         if (res != VK_SUCCESS) {
+             fprintf(stderr, "vkCreateSwapchainKHR failed with error code 0x%X.\n", res);
+             return false;
+@@ -2235,6 +2311,81 @@ namespace RT64 {
+         return true;
+     }
+ 
++    bool VulkanSwapChain::recreateSurface() {
++#if defined(RT64_SDL_WINDOW_VULKAN) && defined(__ANDROID__)
++        vkDeviceWaitIdle(commandQueue->device->vk);
++        releaseImageViews();
++        releaseSwapChain();
++
++        VulkanInterface *renderInterface = commandQueue->device->renderInterface;
++        if (surface != VK_NULL_HANDLE) {
++            vkDestroySurfaceKHR(renderInterface->instance, surface, nullptr);
++            surface = VK_NULL_HANDLE;
++        }
++
++        if (SDL_Vulkan_CreateSurface(renderWindow, renderInterface->instance, &surface) == SDL_FALSE) {
++            fprintf(stderr, "SDL_Vulkan_CreateSurface failed during resume: %s.\n", SDL_GetError());
++            return false;
++        }
++
++        VkBool32 presentSupported = false;
++        VkPhysicalDevice physicalDevice = commandQueue->device->physicalDevice;
++        VkResult res = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, commandQueue->familyIndex, surface, &presentSupported);
++        if (res != VK_SUCCESS || !presentSupported) {
++            fprintf(stderr, "The resumed Android surface does not support presentation.\n");
++            return false;
++        }
++
++        VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
++        res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed during resume with error code 0x%X.\n", res);
++            return false;
++        }
++
++        const uint32_t maxImageCount = (surfaceCapabilities.maxImageCount == 0) ? UINT32_MAX : surfaceCapabilities.maxImageCount;
++        textureCount = std::clamp(textureCount, surfaceCapabilities.minImageCount, maxImageCount);
++
++        if (!pickCompositeAlpha(surfaceCapabilities.supportedCompositeAlpha, pickedAlphaFlag)) {
++            fprintf(stderr, "No supported alpha compositing mode was found during resume.\n");
++            return false;
++        }
++
++        uint32_t surfaceFormatCount = 0;
++        res = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
++        if ((res != VK_SUCCESS) || (surfaceFormatCount == 0)) {
++            fprintf(stderr, "Unable to enumerate Vulkan surface formats during resume (result 0x%X, count %u).\n", res, surfaceFormatCount);
++            return false;
++        }
++        std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
++        res = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, surfaceFormats.data());
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "Unable to read Vulkan surface formats during resume (result 0x%X).\n", res);
++            return false;
++        }
++
++        pickedSurfaceFormat = {};
++        const VkFormat requestedFormat = toVk(format);
++        for (const VkSurfaceFormatKHR &surfaceFormat : surfaceFormats) {
++            if (surfaceFormat.format == requestedFormat) {
++                pickedSurfaceFormat = surfaceFormat;
++                if (surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
++                    break;
++                }
++            }
++        }
++
++        if (pickedSurfaceFormat.format == VK_FORMAT_UNDEFINED) {
++            fprintf(stderr, "No compatible surface formats were found during resume.\n");
++            return false;
++        }
++
++        return resize();
++#else
++        return resize();
++#endif
++    }
++
+     bool VulkanSwapChain::needsResize() const {
+         uint32_t windowWidth, windowHeight;
+         getWindowSize(windowWidth, windowHeight);
+@@ -3476,6 +3627,10 @@ namespace RT64 {
+             return;
+         }
+ 
++        // Store properties before checking whether promoted Vulkan 1.2 features require
++        // their legacy extension names.
++        vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
++
+         // Check for extensions.
+         uint32_t extensionCount;
+         vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+@@ -3484,6 +3639,7 @@ namespace RT64 {
+         vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
+ 
+         std::unordered_set<std::string> missingRequiredExtensions = RequiredDeviceExtensions;
++        std::unordered_set<std::string> supportedRequiredExtensions;
+         std::unordered_set<std::string> supportedOptionalExtensions;
+ #   if DLSS_ENABLED
+         const std::unordered_set<std::string> dlssExtensions = DLSS::getRequiredDeviceExtensionsVulkan(this);
+@@ -3492,7 +3648,10 @@ namespace RT64 {
+             const std::string extensionName(availableExtensions[i].extensionName);
+             missingRequiredExtensions.erase(extensionName);
+ 
+-            if (OptionalDeviceExtensions.find(extensionName) != OptionalDeviceExtensions.end()) {
++            if (RequiredDeviceExtensions.find(extensionName) != RequiredDeviceExtensions.end()) {
++                supportedRequiredExtensions.insert(extensionName);
++            }
++            else if (OptionalDeviceExtensions.find(extensionName) != OptionalDeviceExtensions.end()) {
+                 supportedOptionalExtensions.insert(extensionName);
+             }
+ #       if DLSS_ENABLED
+@@ -3502,6 +3661,15 @@ namespace RT64 {
+ #       endif
+         }
+ 
++        // Descriptor indexing and scalar block layout were promoted to Vulkan 1.2. Drivers are
++        // not required to advertise the corresponding extension names when exposing them in core.
++        const bool vulkan12Core = (VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion) > 1) ||
++            ((VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion) == 1) && (VK_VERSION_MINOR(physicalDeviceProperties.apiVersion) >= 2));
++        if (vulkan12Core) {
++            missingRequiredExtensions.erase(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
++            missingRequiredExtensions.erase(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
++        }
++
+         if (!missingRequiredExtensions.empty()) {
+             for (const std::string &extension : missingRequiredExtensions) {
+                 fprintf(stderr, "Missing required extension: %s.\n", extension.c_str());
+@@ -3511,9 +3679,6 @@ namespace RT64 {
+             return;
+         }
+ 
+-        // Store properties.
+-        vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+-
+         // Check for supported features.
+         void *featuresChain = nullptr;
+         VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures = {};
+@@ -3622,15 +3787,28 @@ namespace RT64 {
+         std::vector<bool> queueFamilyUsed(queueFamilyCount, false);
+         vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilyProperties.data());
+ 
++        fprintf(stderr, "Vulkan device: %s, vendor=0x%X, device=0x%X, API=%u.%u.%u.\n",
++            physicalDeviceProperties.deviceName,
++            physicalDeviceProperties.vendorID,
++            physicalDeviceProperties.deviceID,
++            VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion),
++            VK_VERSION_MINOR(physicalDeviceProperties.apiVersion),
++            VK_VERSION_PATCH(physicalDeviceProperties.apiVersion));
++        for (uint32_t i = 0; i < queueFamilyCount; i++) {
++            fprintf(stderr, "Vulkan queue family %u: flags=0x%X, count=%u.\n",
++                i, queueFamilyProperties[i].queueFlags, queueFamilyProperties[i].queueCount);
++        }
++
+         auto pickFamilyQueue = [&](RenderCommandListType type, VkQueueFlags flags) {
+             uint32_t familyIndex = 0;
+             uint32_t familySetBits = sizeof(uint32_t) * 8;
+             uint32_t familyQueueCount = 0;
++            bool foundFamily = false;
+             for (uint32_t i = 0; i < queueFamilyCount; i++) {
+                 const VkQueueFamilyProperties &props = queueFamilyProperties[i];
+ 
+                 // The family queue flags must contain all the flags required by the command list type.
+-                if ((props.queueFlags & flags) != flags) {
++                if (!queueFamilySupportsFlags(props.queueFlags, flags)) {
+                     continue;
+                 }
+ 
+@@ -3640,17 +3818,28 @@ namespace RT64 {
+                     familyIndex = i;
+                     familySetBits = setBits;
+                     familyQueueCount = props.queueCount;
++                    foundFamily = true;
+                 }
+             }
+ 
++            if (!foundFamily) {
++                fprintf(stderr, "Unable to find Vulkan queue family for command list type %u with flags 0x%X.\n",
++                    uint32_t(type), flags);
++                return false;
++            }
++
+             queueFamilyIndices[toFamilyIndex(type)] = familyIndex;
+             queueFamilyUsed[familyIndex] = true;
++            return true;
+         };
+ 
+         // Pick the family queues for each type of command list.
+-        pickFamilyQueue(RenderCommandListType::DIRECT, VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
+-        pickFamilyQueue(RenderCommandListType::COMPUTE, VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
+-        pickFamilyQueue(RenderCommandListType::COPY, VK_QUEUE_TRANSFER_BIT);
++        const bool foundDirectQueue = pickFamilyQueue(RenderCommandListType::DIRECT, VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
++        const bool foundComputeQueue = pickFamilyQueue(RenderCommandListType::COMPUTE, VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
++        const bool foundCopyQueue = pickFamilyQueue(RenderCommandListType::COPY, VK_QUEUE_TRANSFER_BIT);
++        if (!foundDirectQueue || !foundComputeQueue || !foundCopyQueue) {
++            return;
++        }
+ 
+         // Create the struct to store the virtual queues.
+         queueFamilies.resize(queueFamilyCount);
+@@ -3672,7 +3861,7 @@ namespace RT64 {
+         }
+ 
+         std::vector<const char *> enabledExtensions;
+-        for (const std::string &extension : RequiredDeviceExtensions) {
++        for (const std::string &extension : supportedRequiredExtensions) {
+             enabledExtensions.push_back(extension.c_str());
+         }
+ 
+@@ -4066,7 +4255,47 @@ namespace RT64 {
+ #else
+     VulkanInterface::VulkanInterface() {
+ #endif
+-        VkResult res = volkInitialize();
++        VkResult res = VK_SUCCESS;
++#if defined(ZELDA_ANDROID_ADRENOTOOLS)
++        const char *driverDirectory = std::getenv("APP_CUSTOM_VULKAN_DRIVER_DIR");
++        const char *driverName = std::getenv("APP_CUSTOM_VULKAN_DRIVER_NAME");
++        const char *nativeLibraryDirectory = std::getenv("APP_NATIVE_LIBRARY_DIR");
++        const char *temporaryDirectory = std::getenv("APP_FOLDER_PATH");
++        const bool customDriverSelected = driverDirectory != nullptr && driverDirectory[0] != '\0' &&
++            driverName != nullptr && driverName[0] != '\0' &&
++            nativeLibraryDirectory != nullptr && nativeLibraryDirectory[0] != '\0';
++
++        if (customDriverSelected) {
++            customVulkanLibrary = adrenotools_open_libvulkan(
++                RTLD_NOW | RTLD_LOCAL,
++                ADRENOTOOLS_DRIVER_CUSTOM | ADRENOTOOLS_DRIVER_FILE_REDIRECT,
++                temporaryDirectory,
++                nativeLibraryDirectory,
++                driverDirectory,
++                driverName,
++                driverDirectory,
++                nullptr);
++            PFN_vkGetInstanceProcAddr getInstanceProcAddr = customVulkanLibrary == nullptr
++                ? nullptr
++                : reinterpret_cast<PFN_vkGetInstanceProcAddr>(
++                    dlsym(customVulkanLibrary, "vkGetInstanceProcAddr"));
++            if (getInstanceProcAddr != nullptr) {
++                volkInitializeCustom(getInstanceProcAddr);
++                __android_log_print(ANDROID_LOG_INFO, "ZeldaRT64",
++                    "Loaded custom Vulkan driver: %s", driverName);
++            }
++            else {
++                __android_log_print(ANDROID_LOG_ERROR, "ZeldaRT64",
++                    "Custom Vulkan driver failed to load; using the system driver");
++                res = volkInitialize();
++            }
++        }
++        else {
++            res = volkInitialize();
++        }
++#else
++        res = volkInitialize();
++#endif
+         if (res != VK_SUCCESS) {
+             fprintf(stderr, "volkInitialize failed with error code 0x%X.\n", res);
+             return;
+diff --git a/src/vulkan/rt64_vulkan.h b/src/vulkan/rt64_vulkan.h
+index 293a580..d6da2fd 100644
+--- a/src/vulkan/rt64_vulkan.h
++++ b/src/vulkan/rt64_vulkan.h
+@@ -229,6 +229,7 @@ namespace RT64 {
+         bool present(uint32_t textureIndex, RenderCommandSemaphore **waitSemaphores, uint32_t waitSemaphoreCount) override;
+         void wait() override;
+         bool resize() override;
++        bool recreateSurface() override;
+         bool needsResize() const override;
+         void setVsyncEnabled(bool vsyncEnabled) override;
+         bool isVsyncEnabled() const override;

@@ -10,6 +10,14 @@ RECOMP_DECLARE_EVENT(recomp_before_first_person_aiming_update_event(PlayState* p
 RECOMP_DECLARE_EVENT(recomp_after_first_person_aiming_update_event(PlayState* play, Player* this, bool in_free_look));
 RECOMP_DECLARE_EVENT(recomp_set_extra_item_slot_statuses(PlayState* play, s32 enabled));
 
+#if defined(ZELDA_ANDROID_BUILTIN_DPAD)
+void on_set_slot_statuses(PlayState* play, s32 enabled);
+void on_update_buttons_part2(PlayState* play);
+#else
+#define on_set_slot_statuses(play, enabled) ((void)0)
+#define on_update_buttons_part2(play) ((void)0)
+#endif
+
 s32 func_80847190(PlayState* play, Player* this, s32 arg2);
 s16 func_80832754(Player* this, s32 arg1);
 s32 func_8082EF20(Player* this);
@@ -322,6 +330,14 @@ u16 func_801A5100(void);
 #define AT_H_AND_D (play->sceneId == SCENE_BOWLING)
 #define H_AND_D_FIX_ACTIVE (h_and_d_no_sword_fix && AT_H_AND_D)
 
+void restore_full_hud_visibility(void) {
+    // Button status updates can request a full HUD again while it is fading in.
+    if (gSaveContext.nextHudVisibility != HUD_VISIBILITY_ALL) {
+        gSaveContext.hudVisibility = HUD_VISIBILITY_IDLE;
+        Interface_SetHudVisibility(HUD_VISIBILITY_ALL);
+    }
+}
+
 // @recomp Patched to call event for extra item slot mods.
 RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
     InterfaceContext* interfaceCtx = &play->interfaceCtx;
@@ -352,6 +368,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                            on_set_slot_statuses(play, BTN_DISABLED);
                         }
                     } else if (gSaveContext.buttonStatus[EQUIP_SLOT_B] == BTN_DISABLED) {
                         gSaveContext.buttonStatus[EQUIP_SLOT_B] = BTN_ENABLED;
@@ -359,6 +376,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_ENABLED;
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_ENABLED;
                         recomp_set_extra_item_slot_statuses(play, BTN_ENABLED);
+                        on_set_slot_statuses(play, BTN_ENABLED);
                     }
 
                     Interface_SetHudVisibility(HUD_VISIBILITY_B_MAGIC);
@@ -372,6 +390,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_ENABLED;
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_ENABLED;
                         recomp_set_extra_item_slot_statuses(play, BTN_ENABLED);
+                        on_set_slot_statuses(play, BTN_ENABLED);
                         if (play->sceneId == SCENE_BOWLING) {
                             if (CURRENT_DAY == 1) {
                                 BUTTON_ITEM_EQUIP(CUR_FORM, EQUIP_SLOT_B) = ITEM_BOMBCHU;
@@ -385,6 +404,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                            on_set_slot_statuses(play, BTN_DISABLED);
                         } else {
                             // @recomp_use_export_var no_bow_epona_fix: Part of the no bow Epona fix.
                             if (EPONA_FIX_ACTIVE) {
@@ -417,6 +437,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                                 gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                                 gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                                 recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                                on_set_slot_statuses(play, BTN_DISABLED);
                                 Interface_SetHudVisibility(HUD_VISIBILITY_A_HEARTS_MAGIC_MINIMAP_WITH_OVERWRITE);
                             }
                         }
@@ -444,6 +465,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                         gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                         recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                        on_set_slot_statuses(play, BTN_DISABLED);
                         Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
                     } else if (ON_EPONA) {
                         Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
@@ -469,6 +491,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                     recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                    on_set_slot_statuses(play, BTN_DISABLED);
                 } else {
                     // @recomp_use_export_var no_bow_epona_fix: Part of the no bow Epona fix.
                     if (EPONA_FIX_ACTIVE) {
@@ -513,6 +536,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                     recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                    on_set_slot_statuses(play, BTN_DISABLED);
                     Interface_SetHudVisibility(HUD_VISIBILITY_A_HEARTS_MAGIC_MINIMAP_WITH_OVERWRITE);
                 }
 
@@ -531,6 +555,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
                     gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
                     recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+                    on_set_slot_statuses(play, BTN_DISABLED);
                     Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
                 } else if (ON_EPONA) {
                     Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
@@ -601,6 +626,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+            on_set_slot_statuses(play, BTN_DISABLED);
             Interface_SetHudVisibility(HUD_VISIBILITY_A_B_MINIMAP);
         } else if ((gSaveContext.save.entrance == ENTRANCE(GORON_RACETRACK, 1)) &&
                    (play->transitionTrigger == TRANS_TRIGGER_OFF) && (play->transitionMode == TRANS_MODE_OFF)) {
@@ -609,6 +635,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+            on_set_slot_statuses(play, BTN_DISABLED);
             Interface_SetHudVisibility(HUD_VISIBILITY_A_B_HEARTS_MAGIC_MINIMAP);
         } else if (play->actorCtx.flags & ACTORCTX_FLAG_PICTO_BOX_ON) {
             // Related to pictograph
@@ -630,9 +657,10 @@ RECOMP_PATCH void Interface_UpdateButtonsPart1(PlayState* play) {
     }
 
     if (restoreHudVisibility) {
-        gSaveContext.hudVisibility = HUD_VISIBILITY_IDLE;
         if ((play->transitionTrigger == TRANS_TRIGGER_OFF) && (play->transitionMode == TRANS_MODE_OFF)) {
-            Interface_SetHudVisibility(HUD_VISIBILITY_ALL);
+            restore_full_hud_visibility();
+        } else {
+            gSaveContext.hudVisibility = HUD_VISIBILITY_IDLE;
         }
     }
 }
@@ -789,6 +817,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart2(PlayState* play) {
             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+            on_set_slot_statuses(play, BTN_DISABLED);
         }
     } else if (!gSaveContext.save.saveInfo.playerData.isMagicAcquired && (CUR_FORM == PLAYER_FORM_DEKU) &&
                (BUTTON_ITEM_EQUIP(CUR_FORM, EQUIP_SLOT_B) == ITEM_DEKU_NUT)) {
@@ -887,6 +916,7 @@ RECOMP_PATCH void Interface_UpdateButtonsPart2(PlayState* play) {
             gSaveContext.buttonStatus[EQUIP_SLOT_C_DOWN] = BTN_DISABLED;
             gSaveContext.buttonStatus[EQUIP_SLOT_C_RIGHT] = BTN_DISABLED;
             recomp_set_extra_item_slot_statuses(play, BTN_DISABLED);
+            on_set_slot_statuses(play, BTN_DISABLED);
             restoreHudVisibility = true;
             Interface_SetHudVisibility(HUD_VISIBILITY_ALL);
         }
@@ -1123,9 +1153,10 @@ RECOMP_PATCH void Interface_UpdateButtonsPart2(PlayState* play) {
 
     if (restoreHudVisibility && (play->activeCamId == CAM_ID_MAIN) && (play->transitionTrigger == TRANS_TRIGGER_OFF) &&
         (play->transitionMode == TRANS_MODE_OFF)) {
-        gSaveContext.hudVisibility = HUD_VISIBILITY_IDLE;
-        Interface_SetHudVisibility(HUD_VISIBILITY_ALL);
+        restore_full_hud_visibility();
     }
+
+    on_update_buttons_part2(play);
 }
 
 typedef struct {
@@ -1173,6 +1204,8 @@ extern f32 AudioOcarina_BendPitchTwoSemitones(s8 bendIndex);
 // @recomp Patch the function in order to read DPad inputs for the ocarina as well as CButton inputs. 
 RECOMP_PATCH void AudioOcarina_PlayControllerInput(u8 isOcarinaSfxSuppressedWhenCancelled) {
     u32 ocarinaBtnsHeld;
+    u32 dpadOcarinaButtons = recomp_get_dpad_items_enabled() ? (BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP) : 0;
+    u32 ocarinaInputButtons = BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | dpadOcarinaButtons;
 
     // Prevents two different ocarina notes from being played on two consecutive frames
     if ((sOcarinaFlags != 0) && (sOcarinaDropInputTimer != 0)) {
@@ -1183,15 +1216,14 @@ RECOMP_PATCH void AudioOcarina_PlayControllerInput(u8 isOcarinaSfxSuppressedWhen
     // Ensures the button pressed to start the ocarina does not also play an ocarina note
     // @recomp Check for DPad inputs as well.
     if ((sOcarinaInputButtonStart == 0) ||
-        ((sOcarinaInputButtonStart & (BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)) !=
-         (sOcarinaInputButtonCur & (BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)))) {
+        ((sOcarinaInputButtonStart & ocarinaInputButtons) != (sOcarinaInputButtonCur & ocarinaInputButtons))) {
         sOcarinaInputButtonStart = 0;
         if (1) {}
         sCurOcarinaPitch = OCARINA_PITCH_NONE;
         sCurOcarinaButtonIndex = OCARINA_BTN_INVALID;
         // @recomp Check for DPad inputs as well.
-        ocarinaBtnsHeld = (sOcarinaInputButtonCur & (BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)) &
-                          (sOcarinaInputButtonPrev & (BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP));
+        ocarinaBtnsHeld = (sOcarinaInputButtonCur & ocarinaInputButtons) &
+                          (sOcarinaInputButtonPrev & ocarinaInputButtons);
 
         if (!(sOcarinaInputButtonPress & ocarinaBtnsHeld) && (sOcarinaInputButtonCur != 0)) {
             sOcarinaInputButtonPress = sOcarinaInputButtonCur;
@@ -1205,22 +1237,22 @@ RECOMP_PATCH void AudioOcarina_PlayControllerInput(u8 isOcarinaSfxSuppressedWhen
             sCurOcarinaButtonIndex = OCARINA_BTN_A;
 
         // @recomp Check for DPad down input as well.
-        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, (BTN_CDOWN | BTN_DDOWN))) {
+        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CDOWN | (recomp_get_dpad_items_enabled() ? BTN_DDOWN : 0))) {
             sCurOcarinaPitch = OCARINA_PITCH_F4;
             sCurOcarinaButtonIndex = OCARINA_BTN_C_DOWN;
 
         // @recomp Check for DPad right input as well.
-        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CRIGHT | BTN_DRIGHT)) {
+        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CRIGHT | (recomp_get_dpad_items_enabled() ? BTN_DRIGHT : 0))) {
             sCurOcarinaPitch = OCARINA_PITCH_A4;
             sCurOcarinaButtonIndex = OCARINA_BTN_C_RIGHT;
             
         // @recomp Check for DPad left input as well.
-        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CLEFT | BTN_DLEFT)) {
+        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CLEFT | (recomp_get_dpad_items_enabled() ? BTN_DLEFT : 0))) {
             sCurOcarinaPitch = OCARINA_PITCH_B4;
             sCurOcarinaButtonIndex = OCARINA_BTN_C_LEFT;
 
         // @recomp Check for DPad up input as well.
-        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CUP | BTN_DUP)) {
+        } else if (CHECK_BTN_ANY(sOcarinaInputButtonPress, BTN_CUP | (recomp_get_dpad_items_enabled() ? BTN_DUP : 0))) {
             sCurOcarinaPitch = OCARINA_PITCH_D5;
             sCurOcarinaButtonIndex = OCARINA_BTN_C_UP;
         }
@@ -1297,7 +1329,9 @@ RECOMP_PATCH void AudioOcarina_CheckSongsWithoutMusicStaff(void) {
 
     // @recomp Add the DPad inputs to the check.
     if (CHECK_BTN_ANY(sOcarinaInputButtonCur, BTN_L) &&
-        CHECK_BTN_ANY(sOcarinaInputButtonCur, BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)) {
+        CHECK_BTN_ANY(sOcarinaInputButtonCur,
+            BTN_A | BTN_CRIGHT | BTN_CLEFT | BTN_CDOWN | BTN_CUP |
+                (recomp_get_dpad_items_enabled() ? (BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP) : 0))) {
         AudioOcarina_StartDefault(sOcarinaFlags);
         return;
     }

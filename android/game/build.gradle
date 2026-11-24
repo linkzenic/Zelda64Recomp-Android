@@ -1,0 +1,290 @@
+plugins {
+    id 'com.android.application'
+    id 'com.chaquo.python'
+}
+
+final String userHome = System.getProperty('user.home')
+final String sdlPrefix = System.getenv('ZELDA_ANDROID_SDL2_PREFIX') ?: "${userHome}/Android/prefixes/SDL2-2.32.10-android-arm64"
+final String freetypePrefix = System.getenv('ZELDA_ANDROID_FREETYPE_PREFIX') ?: "${userHome}/Android/prefixes/freetype-2.13.3-android-arm64"
+final String hostFileToC = System.getenv('ZELDA_ANDROID_FILE_TO_C') ?: "${rootProject.projectDir.parentFile}/build-n64recomp-gcc/file_to_c"
+final String androidSdkPath = System.getenv('ANDROID_HOME') ?: System.getenv('ANDROID_SDK_ROOT')
+final String androidNdkVersion = '28.2.13676358'
+final File generatedJniLibs = layout.buildDirectory.dir('generated/jniLibs').get().asFile
+final File generatedAssets = layout.buildDirectory.dir('generated/assets').get().asFile
+final File generatedRandoPython = layout.buildDirectory.dir('generated/randoPython').get().asFile
+final File nativeModsSource = file('../native_mods')
+final File nativeModsBuild = layout.buildDirectory.dir('nativeMods').get().asFile
+final File randoGlueSource = file(System.getenv('ZELDA_RANDO_GLUE_DIR') ?: '../../build/rando/MMRecompAPCppGlue')
+final String androidKeystorePath = (project.findProperty('ANDROID_KEYSTORE_PATH') ?: System.getenv('ANDROID_KEYSTORE_PATH') ?: '').toString()
+final String androidKeystorePassword = (project.findProperty('ANDROID_KEYSTORE_PASSWORD') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: '').toString()
+final String androidKeyAlias = (project.findProperty('ANDROID_KEY_ALIAS') ?: System.getenv('ANDROID_KEY_ALIAS') ?: '').toString()
+final String androidKeyPassword = (project.findProperty('ANDROID_KEY_PASSWORD') ?: System.getenv('ANDROID_KEY_PASSWORD') ?: '').toString()
+final boolean hasAndroidReleaseSigning = androidKeystorePath && androidKeystorePassword && androidKeyAlias && androidKeyPassword
+final boolean useDebugSigningForRc = (project.findProperty('zeldaUseDebugSigningForRc') ?: 'false').toString().toBoolean()
+final boolean productionUpgrade = (project.findProperty('zeldaProductionUpgrade') ?: 'false').toString().toBoolean()
+final boolean enableLegacyMigrationTools = (project.findProperty('zeldaEnableLegacyMigrationTools') ?: 'false').toString().toBoolean()
+if (productionUpgrade && (useDebugSigningForRc || enableLegacyMigrationTools)) {
+    throw new GradleException('Production upgrades require release signing and disable migration test tools.')
+}
+
+android {
+    namespace 'io.github.zelda64recomp.cleanboot'
+    compileSdk 36
+
+    buildFeatures {
+        resValues true
+    }
+
+    defaultConfig {
+        applicationId productionUpgrade ? 'io.github.zelda64recomp' : 'io.github.zelda64recomp.cleanboot'
+        minSdk 24
+        targetSdk 36
+        versionCode 100
+        versionName productionUpgrade ? '1.0' : '1.0.0-rc1'
+        resValue 'string', 'app_name', productionUpgrade ? 'Zelda64 Recompiled' : 'Zelda64 Clean Boot'
+
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+
+        externalNativeBuild {
+            cmake {
+                targets 'main'
+                arguments \
+                    '-DANDROID_PLATFORM=android-24', \
+                    "-DSDL2_DIR=${sdlPrefix}/lib/cmake/SDL2", \
+                    "-DCMAKE_PREFIX_PATH=${sdlPrefix};${freetypePrefix}", \
+                    "-DFREETYPE_LIBRARY=${freetypePrefix}/lib/libfreetype.a", \
+                    "-DFREETYPE_INCLUDE_DIRS=${freetypePrefix}/include/freetype2", \
+                    "-DZELDA_HOST_FILE_TO_C=${hostFileToC}", \
+                    "-DZELDA_ANDROID_EXTRA_JNI_LIBS_DIR=${new File(generatedJniLibs, 'arm64-v8a')}", \
+                    '-DZELDA_ANDROID_RUNTIME=ON', \
+                    "-DZELDA_ANDROID_LEGACY_MIGRATION_TOOLS=${enableLegacyMigrationTools ? 'ON' : 'OFF'}", \
+                    '-DZSTD_BUILD_PROGRAMS=OFF', \
+                    '-DZSTD_BUILD_TESTS=OFF', \
+                    '-DZSTD_BUILD_DICTBUILDER=OFF'
+            }
+        }
+    }
+
+    ndkVersion androidNdkVersion
+
+    signingConfigs {
+        if (hasAndroidReleaseSigning) {
+            release {
+                storeFile file(androidKeystorePath)
+                storePassword androidKeystorePassword
+                keyAlias androidKeyAlias
+                keyPassword androidKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+            jniDebuggable true
+        }
+        release {
+            debuggable false
+            jniDebuggable false
+            minifyEnabled false
+            if (hasAndroidReleaseSigning) {
+                signingConfig signingConfigs.release
+            } else if (useDebugSigningForRc) {
+                signingConfig signingConfigs.debug
+            }
+        }
+        rehearsal {
+            initWith release
+            applicationIdSuffix '.rehearsal'
+            versionNameSuffix '-rehearsal'
+            debuggable true
+            jniDebuggable true
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+            resValue 'string', 'app_name', 'Zelda64 Migration Rehearsal'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('../../CMakeLists.txt')
+            version '3.30.3'
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = [generatedJniLibs]
+            assets.srcDirs = ['src/main/assets', generatedAssets]
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // The custom Vulkan loader must address its hook libraries by filesystem path.
+            useLegacyPackaging true
+        }
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version '3.11'
+        pip {
+            install 'PyYAML==6.0.3'
+            install 'schema==0.7.7'
+            install 'typing_extensions==4.12.2'
+            install 'websockets==12.0'
+        }
+    }
+    sourceSets {
+        main {
+            srcDir 'src/main/python'
+            srcDir generatedRandoPython
+        }
+    }
+}
+
+tasks.register('prepareRandoPythonSources') {
+    group = 'build setup'
+    description = 'Prepare the pinned minipelago sources used for local randomizer generation.'
+
+    inputs.dir(randoGlueSource)
+    outputs.dir(generatedRandoPython)
+
+    doLast {
+        File archipelagoDir = new File(randoGlueSource, 'archipelago')
+        File scriptsDir = new File(randoGlueSource, 'minipelago/scripts')
+        if (!new File(archipelagoDir, 'BaseClasses.py').isFile()) {
+            throw new GradleException("Randomizer sources are missing: ${archipelagoDir}")
+        }
+
+        delete generatedRandoPython
+        generatedRandoPython.mkdirs()
+
+        copy {
+            from(archipelagoDir) {
+                include 'BaseClasses.py', 'Fill.py', 'Generate.py', 'Main.py',
+                        'MultiServer.py', 'NetUtils.py', 'Options.py', 'Utils.py',
+                        'settings.py', 'requirements.txt'
+            }
+            into generatedRandoPython
+        }
+        copy {
+            from(new File(scriptsDir, 'MMGenerate.py'))
+            into generatedRandoPython
+        }
+        copy {
+            from(new File(scriptsDir, 'DummyModuleUpdate.py'))
+            rename { 'ModuleUpdate.py' }
+            into generatedRandoPython
+        }
+        copy {
+            from(new File(scriptsDir, 'worlds_init.py'))
+            rename { '__init__.py' }
+            into new File(generatedRandoPython, 'worlds')
+        }
+        copy {
+            from(archipelagoDir) {
+                include 'worlds/AutoSNIClient.py', 'worlds/AutoWorld.py',
+                        'worlds/Files.py', 'worlds/LauncherComponents.py'
+            }
+            into generatedRandoPython
+        }
+        copy {
+            from(new File(archipelagoDir, 'worlds/generic'))
+            into new File(generatedRandoPython, 'worlds/generic')
+        }
+        copy {
+            from(new File(archipelagoDir, 'worlds/mm_recomp')) {
+                exclude 'docs/**', 'test/**'
+            }
+            into new File(generatedRandoPython, 'worlds/mm_recomp')
+        }
+        copy {
+            from(new File(archipelagoDir, 'worlds/alttp')) {
+                include 'EntranceRandomizer.py', 'Text.py'
+            }
+            into new File(generatedRandoPython, 'worlds/alttp')
+        }
+        copy {
+            from(new File(scriptsDir, '__init__.py'))
+            into new File(generatedRandoPython, 'worlds/alttp')
+        }
+    }
+}
+
+tasks.register('copySdlRuntime', Copy) {
+    from("${sdlPrefix}/lib/libSDL2.so")
+    into(new File(generatedJniLibs, 'arm64-v8a'))
+}
+
+tasks.register('copyProgramAssets', Copy) {
+    from('../../assets') {
+        into('program/assets')
+    }
+    from('../../recompcontrollerdb.txt') {
+        into('program')
+    }
+    into(generatedAssets)
+}
+
+tasks.register('configureBundledNativeMods', Exec) {
+    final File cmake = new File(androidSdkPath, 'cmake/3.30.3/bin/cmake')
+    final File toolchain = new File(
+            androidSdkPath,
+            "ndk/${androidNdkVersion}/build/cmake/android.toolchain.cmake")
+
+    inputs.dir(nativeModsSource)
+    outputs.file(new File(nativeModsBuild, 'build.ninja'))
+
+    doFirst {
+        nativeModsBuild.mkdirs()
+    }
+    commandLine cmake,
+            '-S', nativeModsSource,
+            '-B', nativeModsBuild,
+            '-G', 'Ninja',
+            "-DCMAKE_TOOLCHAIN_FILE=${toolchain}",
+            '-DANDROID_ABI=arm64-v8a',
+            '-DANDROID_PLATFORM=android-24',
+            '-DANDROID_STL=c++_static',
+            '-DCMAKE_BUILD_TYPE=Release'
+}
+
+tasks.register('buildBundledNativeMods', Exec) {
+    dependsOn tasks.named('configureBundledNativeMods')
+
+    final File cmake = new File(androidSdkPath, 'cmake/3.30.3/bin/cmake')
+    inputs.dir(nativeModsSource)
+    outputs.files(
+            new File(nativeModsBuild, 'lib/ProxyRecomp_KV005.so'),
+            new File(nativeModsBuild, 'lib/yazmt_mm_playermodelmanager_fsmodels_extlib.so'))
+    commandLine cmake, '--build', nativeModsBuild
+}
+
+tasks.register('copyBundledNativeMods', Sync) {
+    dependsOn tasks.named('buildBundledNativeMods')
+
+    from(new File(nativeModsSource, 'packages'))
+    from(new File(nativeModsBuild, 'lib')) {
+        include '*.so'
+    }
+    into(new File(generatedAssets, 'bundled_mods'))
+}
+
+tasks.named('preBuild') {
+    dependsOn tasks.named('copySdlRuntime')
+    dependsOn tasks.named('copyProgramAssets')
+    dependsOn tasks.named('copyBundledNativeMods')
+    dependsOn tasks.named('prepareRandoPythonSources')
+}
+
+tasks.matching { task ->
+    task.name.startsWith('merge') && task.name.endsWith('PythonSources')
+}
+        .configureEach {
+            dependsOn tasks.named('prepareRandoPythonSources')
+        }

@@ -53,6 +53,7 @@ namespace recompui {
         void add_value_changed_callback(std::function<void(double)> callback);
         void do_step(bool increment);
         void set_focus_callback(std::function<void(bool)> callback);
+        void set_large_touch_style();
     };
 
 } // namespace recompui

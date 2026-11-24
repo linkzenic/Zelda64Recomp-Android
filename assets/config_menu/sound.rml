@@ -35,39 +35,26 @@
                                     type="range"
                                     min="0"
                                     max="100"
-                                    style="flex: 1; margin: 0dp; nav-up: #main_volume_input; nav-down: #lhb_on;"
+                                    style="flex: 1; margin: 0dp; nav-up: #main_volume_input; nav-down: #lhb_toggle;"
                                     data-value="bgm_volume"
                                 />
                             </div>
                         </div>
 
                         <div class="config-option" data-event-mouseover="set_cur_config_index(2)">
-                            <label class="config-option__title">Low Health Beeps</label>
-                            <div class="config-option__list">
-                                <input
-                                    type="radio"
-                                    data-event-blur="set_cur_config_index(-1)"
-                                    data-event-focus="set_cur_config_index(2)"
-                                    name="lhb"
-                                    data-checked="low_health_beeps_enabled"
-                                    value="1"
-                                    id="lhb_on"
-                                    style="nav-up: #bgm_volume_input"
-                                />
-                                <label class="config-option__tab-label" for="lhb_on">On</label>
-
-                                <input
-                                    type="radio"
-                                    data-event-blur="set_cur_config_index(-1)"
-                                    data-event-focus="set_cur_config_index(2)"
-                                    name="lhb"
-                                    data-checked="low_health_beeps_enabled"
-                                    value="0"
-                                    id="lhb_off"
-                                    style="nav-up: #bgm_volume_input"
-                                />
-                                <label class="config-option__tab-label" for="lhb_off">Off</label>
-                            </div>
+                            <button
+                                class="config-option__wide-toggle config-option__wide-toggle--compact"
+                                data-class-config-option__wide-toggle--on="low_health_beeps_enabled"
+                                data-event-click="toggle_low_health_beeps"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(2)"
+                                id="lhb_toggle"
+                                style="nav-up: #bgm_volume_input"
+                            >
+                                <div class="config-option__wide-toggle-title">Low Health Beeps</div>
+                                <div class="config-option__wide-toggle-value" data-if="low_health_beeps_enabled">On</div>
+                                <div class="config-option__wide-toggle-value" data-if="!low_health_beeps_enabled">Off</div>
+                            </button>
                         </div>
                 </div>
                 <!-- Descriptions -->
@@ -86,4 +73,3 @@
         </form>
     </body>
 </template>
-    

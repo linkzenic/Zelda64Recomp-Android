@@ -1,6 +1,11 @@
 #include "ui_text_input.h"
 
+#include <algorithm>
 #include <cassert>
+
+#if defined(__ANDROID__)
+#include <SDL.h>
+#endif
 
 namespace recompui {
 
@@ -8,7 +13,23 @@ namespace recompui {
         switch (e.type) {
         case EventType::Text: {
             const EventText &event = std::get<EventText>(e.variant);
-            text = event.text;
+            std::string sanitized_text = event.text;
+
+            if (numeric_only) {
+                sanitized_text.erase(
+                    std::remove_if(sanitized_text.begin(), sanitized_text.end(),
+                                   [](char c) { return c < '0' || c > '9'; }),
+                    sanitized_text.end());
+            }
+            if (max_length != 0 && sanitized_text.size() > max_length) {
+                sanitized_text.resize(max_length);
+            }
+
+            if (sanitized_text != event.text) {
+                set_text(sanitized_text);
+            } else {
+                text = sanitized_text;
+            }
 
             for (const auto &function : text_changed_callbacks) {
                 function(text);
@@ -18,6 +39,14 @@ namespace recompui {
         }
         case EventType::Focus: {
             const EventFocus &event = std::get<EventFocus>(e.variant);
+#if defined(__ANDROID__)
+            if (event.active) {
+                SDL_StartTextInput();
+            }
+            else {
+                SDL_StopTextInput();
+            }
+#endif
             if (focus_callback != nullptr) {
                 focus_callback(event.active);
             }
@@ -49,6 +78,21 @@ namespace recompui {
 
     const std::string &TextInput::get_text() {
         return text;
+    }
+
+    void TextInput::set_numeric_only(bool numeric_only) {
+        this->numeric_only = numeric_only;
+        set_attribute("inputmode", numeric_only ? "numeric" : "text");
+        if (numeric_only) {
+            set_attribute("pattern", "[0-9]*");
+        }
+    }
+
+    void TextInput::set_max_length(size_t max_length) {
+        this->max_length = max_length;
+        if (max_length != 0) {
+            set_attribute("maxlength", std::to_string(max_length));
+        }
     }
 
     void TextInput::add_text_changed_callback(std::function<void(const std::string &)> callback) {

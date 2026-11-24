@@ -10,6 +10,11 @@ CPPFLAGS := -nostdinc -D_LANGUAGE_C -DMIPS -I dummy_headers -I ../lib/mm-decomp/
 LDFLAGS  := -nostdlib -T patches.ld -T syms.ld -Map patches.map --unresolved-symbols=ignore-all --emit-relocs
 
 C_SRCS := $(wildcard *.c)
+ifeq ($(ZELDA_ANDROID_BUILTIN_DPAD),1)
+CPPFLAGS += -DZELDA_ANDROID_BUILTIN_DPAD=1
+else
+C_SRCS := $(filter-out dpad_builtin.c,$(C_SRCS))
+endif
 C_OBJS := $(C_SRCS:.c=.o)
 C_DEPS := $(C_SRCS:.c=.d)
 

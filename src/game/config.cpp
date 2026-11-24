@@ -5,6 +5,7 @@
 #include "zelda_support.h"
 #include "ultramodern/config.hpp"
 #include "librecomp/files.hpp"
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -22,6 +23,16 @@ constexpr std::u8string_view general_filename = u8"general.json";
 constexpr std::u8string_view graphics_filename = u8"graphics.json";
 constexpr std::u8string_view controls_filename = u8"controls.json";
 constexpr std::u8string_view sound_filename = u8"sound.json";
+
+static std::atomic_bool swap_minimap_and_rupees = false;
+
+bool zelda64::get_swap_minimap_and_rupees() {
+    return swap_minimap_and_rupees.load();
+}
+
+void zelda64::set_swap_minimap_and_rupees(bool swapped) {
+    swap_minimap_and_rupees.store(swapped);
+}
 
 constexpr auto res_default            =
 #if defined(__ANDROID__)
@@ -248,9 +259,13 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["mouse_sensitivity"] = recomp::get_mouse_sensitivity();
     config_json["joystick_deadzone"] = recomp::get_joystick_deadzone();
     config_json["autosave_mode"] = zelda64::get_autosave_mode();
+    config_json["save_anywhere_mode"] = zelda64::get_save_anywhere_mode();
     config_json["camera_invert_mode"] = zelda64::get_camera_invert_mode();
     config_json["analog_cam_mode"] = zelda64::get_analog_cam_mode();
+    config_json["analog_camera_distance"] = zelda64::get_analog_camera_distance();
     config_json["analog_camera_invert_mode"] = zelda64::get_analog_camera_invert_mode();
+    config_json["dpad_items_mode"] = zelda64::get_dpad_items_mode();
+    config_json["advanced_settings_mode"] = zelda64::get_advanced_settings_mode();
     config_json["debug_mode"] = zelda64::get_debug_mode_enabled();
 
     return save_json_with_backups(path, config_json);
@@ -264,9 +279,13 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", is_steam_deck ? 50 : 0));
     recomp::set_joystick_deadzone(from_or_default(config_json, "joystick_deadzone", 5));
     zelda64::set_autosave_mode(from_or_default(config_json, "autosave_mode", zelda64::AutosaveMode::On));
+    zelda64::set_save_anywhere_mode(from_or_default(config_json, "save_anywhere_mode", zelda64::SaveAnywhereMode::Off));
     zelda64::set_camera_invert_mode(from_or_default(config_json, "camera_invert_mode", zelda64::CameraInvertMode::InvertY));
     zelda64::set_analog_cam_mode(from_or_default(config_json, "analog_cam_mode", zelda64::AnalogCamMode::Off));
+    zelda64::set_analog_camera_distance(from_or_default(config_json, "analog_camera_distance", 185));
     zelda64::set_analog_camera_invert_mode(from_or_default(config_json, "analog_camera_invert_mode", zelda64::CameraInvertMode::InvertNone));
+    zelda64::set_dpad_items_mode(from_or_default(config_json, "dpad_items_mode", zelda64::DpadItemsMode::Default));
+    zelda64::set_advanced_settings_mode(from_or_default(config_json, "advanced_settings_mode", zelda64::AdvancedSettingsMode::Off));
     zelda64::set_debug_mode_enabled(from_or_default(config_json, "debug_mode", false));
 }
 
@@ -361,12 +380,16 @@ void reset_graphics_options() {
     new_config.hpfb_option = hpfb_default;
     new_config.rr_manual_value = rr_manual_default;
     new_config.developer_mode = developer_mode_default;
+    zelda64::set_clock_style(zelda64::ClockStyle::Original);
+    zelda64::set_swap_minimap_and_rupees(false);
     ultramodern::renderer::set_graphics_config(new_config);
 }
 
 bool save_graphics_config(const std::filesystem::path& path) {
     nlohmann::json config_json{};
     ultramodern::to_json(config_json, ultramodern::renderer::get_graphics_config());
+    config_json["clock_style"] = zelda64::get_clock_style();
+    config_json["swap_minimap_and_rupees"] = zelda64::get_swap_minimap_and_rupees();
     return save_json_with_backups(path, config_json);
 }
 
@@ -378,6 +401,8 @@ bool load_graphics_config(const std::filesystem::path& path) {
 
     ultramodern::renderer::GraphicsConfig new_config{};
     ultramodern::from_json(config_json, new_config);
+    zelda64::set_clock_style(from_or_default(config_json, "clock_style", zelda64::ClockStyle::Original));
+    zelda64::set_swap_minimap_and_rupees(from_or_default(config_json, "swap_minimap_and_rupees", false));
     ultramodern::renderer::set_graphics_config(new_config);
     return true;
 }

@@ -3,6 +3,9 @@
 #include "librecomp/helpers.hpp"
 #include "recomp_input.h"
 #include "ultramodern/ultramodern.hpp"
+#if defined(__ANDROID__)
+#include "../android/android_touch_controller.h"
+#endif
 
 // Arrays that hold the mappings for every input for keyboard and controller respectively.
 using input_mapping = std::array<recomp::InputField, recomp::bindings_per_input>;
@@ -84,7 +87,13 @@ bool recomp::get_n64_input(int controller_num, uint16_t* buttons_out, float* x_o
         return false;
     }
 
+#if defined(__ANDROID__)
+    const uint16_t touch_buttons = zelda64::android::consume_touch_game_buttons();
+#endif
     if (!recomp::game_input_disabled()) {
+#if defined(__ANDROID__)
+        cur_buttons |= touch_buttons;
+#endif
         for (size_t i = 0; i < n64_button_values.size(); i++) {
             size_t input_index = (size_t)GameInput::N64_BUTTON_START + i;
             cur_buttons |= recomp::get_input_digital(keyboard_input_mappings[input_index]) ? n64_button_values[i] : 0;

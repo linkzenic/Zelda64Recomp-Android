@@ -22,6 +22,15 @@
                 </div>
                 <div class="config__header-actions">
                     <button
+                        id="apply_modern_bindings"
+                        class="button button--primary"
+                        style="nav-down:#input_row_button_0_0"
+                        data-if="android_has_touch_controls &amp;&amp; !input_device_is_keyboard"
+                        data-event-click="apply_modern_bindings"
+                    >
+                        <div class="button__label">Apply Modern bindings</div>
+                    </button>
+                    <button
                         class="button button--primary"
                         style="nav-down:#input_row_button_0_0"
                         data-if="android_has_touch_controls"
@@ -366,4 +375,3 @@
         </form>
     </body>
 </template>
-    

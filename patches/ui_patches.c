@@ -2,12 +2,42 @@
 #include "transform_ids.h"
 #include "buffers.h"
 #include "sys_cfb.h"
+#include "z_title_setup.h"
+#include "overlays/gamestates/ovl_title/z_title.h"
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
+#include "touch_hud.h"
+
+#define TOUCH_ACTION_TEX_WIDTH 48
+#define TOUCH_ACTION_TEX_HEIGHT 16
+#define TOUCH_ACTION_TEX_SIZE ((TOUCH_ACTION_TEX_WIDTH * TOUCH_ACTION_TEX_HEIGHT) / 2)
 
 // This moves elements towards the screen edges when increased
 s32 margin_reduction = 8;
 
 extern s32 gFramerateDivisor;
+
+void Setup_SetRegs(void);
+RECOMP_DECLARE_EVENT(recomp_on_setup_init(SetupState* this, s32* handled));
+
+RECOMP_EXPORT void recomp_run_setup_init(SetupState* this) {
+    this->state.destroy = Setup_Destroy;
+    SysFlashrom_InitFlash();
+    SaveContext_Init();
+    Setup_SetRegs();
+
+    STOP_GAMESTATE(&this->state);
+    SET_NEXT_GAMESTATE(&this->state, ConsoleLogo_Init, sizeof(ConsoleLogoState));
+}
+
+RECOMP_PATCH void Setup_Init(GameState* thisx) {
+    SetupState* this = (SetupState*)thisx;
+    s32 handled = false;
+
+    recomp_on_setup_init(this, &handled);
+    if (!handled) {
+        recomp_run_setup_init(this);
+    }
+}
 
 // 10 times bigger than the game's normal buffers.
 typedef struct {
@@ -229,8 +259,20 @@ static Gfx sScreenFillSetupDL[] = {
 void Interface_DrawAButton(PlayState* play);
 void Interface_DrawBButtonIcons(PlayState* play);
 void Interface_DrawCButtonIcons(PlayState* play);
+void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha);
+void Interface_DrawItemIconTexture(PlayState* play, TexturePtr texture, s16 button);
 void Interface_DrawClock(PlayState* play);
+DECLARE_FUNC(s32, recomp_get_swap_minimap_and_rupees);
+void Recomp_Draw3DSClock(PlayState* play);
 void Interface_DrawItemButtons(PlayState* play);
+#if defined(ZELDA_ANDROID_BUILTIN_DPAD)
+void draw_dpad(PlayState* play);
+void draw_dpad_icons(PlayState* play);
+u32 dpad_touch_content(PlayState* play);
+#else
+#define draw_dpad(play) ((void)0)
+#define draw_dpad_icons(play) ((void)0)
+#endif
 void Interface_DrawMinigameIcons(PlayState* play);
 void Interface_DrawPauseMenuEquippingIcons(PlayState* play);
 void Interface_DrawPerfectLetters(PlayState* play);
@@ -238,6 +280,264 @@ void Interface_DrawTimers(PlayState* play);
 void Interface_SetOrthoView(InterfaceContext* interfaceCtx);
 void Interface_SetVertices(PlayState* play);
 void Magic_DrawMeter(PlayState* play);
+
+extern s16 D_801BF9D4[];
+extern s16 D_801BF9DC[];
+extern u8 gAmmoDigit0Tex[];
+
+static s32 get_touch_item_rect(s32 slot, TouchHudRect* rect) {
+    if (!recomp_get_touch_hud_rect(slot, true, rect)) {
+        return false;
+    }
+    // The native right HUD shifts its drawing origin right and up.
+    rect->x -= margin_reduction;
+    rect->y += margin_reduction;
+    return true;
+}
+
+static s32 place_touch_hud_item_slots(void) {
+    static const s16 native_icon_x[] = { 0xA7, 0xE3, 0xF9, 0x10F };
+    static const s16 native_icon_y[] = { 0x11, 0x12, 0x22, 0x12 };
+    TouchHudRect rect;
+    s32 active = false;
+
+    for (s32 slot = EQUIP_SLOT_B; slot <= EQUIP_SLOT_C_RIGHT; ++slot) {
+        // These arrays belong to the native HUD. Touch mode temporarily reuses
+        // them, so restore every value before checking for touch anchors.
+        D_801BF9D4[slot] = native_icon_x[slot];
+        D_801BF9DC[slot] = native_icon_y[slot];
+        if (get_touch_item_rect(slot, &rect)) {
+            s32 icon_size = slot == EQUIP_SLOT_B ? 30 : 24;
+            D_801BF9D4[slot] = rect.x + (rect.size - icon_size) / 2;
+            D_801BF9DC[slot] = rect.y + (rect.size - icon_size) / 2;
+            active = true;
+        }
+    }
+    return active;
+}
+
+static s32 touch_tatl_prompt_visible(PlayState* play) {
+    extern u16 sCUpInvisible;
+    extern u16 sCUpTimer;
+    extern s16 sPictoState;
+    TouchHudRect fairy;
+    if (!get_touch_item_rect(8, &fairy) || !play->interfaceCtx.tatlCalling ||
+        play->pauseCtx.state != PAUSE_STATE_OFF || play->pauseCtx.debugEditor != DEBUG_EDITOR_NONE ||
+        play->csCtx.state != CS_STATE_IDLE || sPictoState != 0) {
+        return false;
+    }
+
+    s32 visible = !sCUpInvisible && play->msgCtx.msgMode == MSGMODE_NONE &&
+        gSaveContext.hudVisibility != HUD_VISIBILITY_NONE &&
+        gSaveContext.hudVisibility != HUD_VISIBILITY_NONE_ALT &&
+        gSaveContext.hudVisibility != HUD_VISIBILITY_A_HEARTS_MAGIC_WITH_OVERWRITE;
+    if (sCUpTimer > 1) {
+        --sCUpTimer;
+    } else {
+        sCUpInvisible ^= 1;
+        sCUpTimer = 10;
+    }
+    return visible;
+}
+
+static void publish_touch_hud_content(PlayState* play, s32 active, u32 equipped_items, bool b_action_visible) {
+    if (!active) {
+        recomp_set_touch_hud_content(0);
+        return;
+    }
+
+    // The touch view uses this bit to show gameplay-only utility buttons.
+    u32 content = (1u << 10) | equipped_items;
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+    if (interfaceCtx->aAlpha > 0 && interfaceCtx->aButtonDoAction != DO_ACTION_NONE &&
+        interfaceCtx->aButtonDoAction < DO_ACTION_MAX) {
+        content |= 1u << 9;
+    }
+    if (touch_tatl_prompt_visible(play)) {
+        content |= 1u << 8;
+    }
+    u8 b_item = BUTTON_ITEM_EQUIP(CUR_FORM, EQUIP_SLOT_B);
+    if (b_action_visible || b_item < ITEM_F0) {
+        content |= 1u << EQUIP_SLOT_B;
+    }
+#if defined(ZELDA_ANDROID_BUILTIN_DPAD)
+    content |= dpad_touch_content(play);
+#endif
+    recomp_set_touch_hud_content(content);
+}
+
+static const u8* touch_a_action_texture(PlayState* play) {
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+    if (interfaceCtx->aButtonState <= A_BTN_STATE_1 || interfaceCtx->aButtonState == A_BTN_STATE_3) {
+        return interfaceCtx->doActionSegment;
+    }
+    return interfaceCtx->doActionSegment + TOUCH_ACTION_TEX_SIZE;
+}
+
+static const u8* touch_b_action_texture(PlayState* play) {
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+    u8 item = BUTTON_ITEM_EQUIP(CUR_FORM, EQUIP_SLOT_B);
+    if (interfaceCtx->unk_222 != 0) {
+        return interfaceCtx->doActionSegment + TOUCH_ACTION_TEX_SIZE * 3;
+    }
+    if (interfaceCtx->unk_21C && interfaceCtx->bButtonDoAction != DO_ACTION_NONE &&
+        (item == ITEM_NONE || item == ITEM_DEKU_NUT ||
+         (item >= ITEM_SWORD_KOKIRI && item <= ITEM_SWORD_GILDED)) &&
+        !(GET_PLAYER(play)->stateFlags3 & PLAYER_STATE3_1000000)) {
+        return interfaceCtx->doActionSegment + TOUCH_ACTION_TEX_SIZE * 4;
+    }
+    return NULL;
+}
+
+static void draw_touch_hud_action(PlayState* play, const TouchHudRect* rect, const u8* action_texture, s16 alpha) {
+    s32 action_height = MAX(6, rect->size / 3);
+    s32 action_y = rect->y + (rect->size - action_height) / 2;
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPPipeSync(OVERLAY_DISP++);
+    gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT,
+                      TEXEL0, 0, PRIMITIVE, 0, PRIMITIVE, ENVIRONMENT, TEXEL0,
+                      ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, alpha);
+    gDPSetEnvColor(OVERLAY_DISP++, 0, 0, 0, 0);
+    gDPLoadTextureBlock_4b(OVERLAY_DISP++, action_texture, G_IM_FMT_IA,
+                           TOUCH_ACTION_TEX_WIDTH, TOUCH_ACTION_TEX_HEIGHT, 0,
+                           G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP,
+                           G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+    gSPTextureRectangle(OVERLAY_DISP++, rect->x * 4, action_y * 4,
+        (rect->x + rect->size) * 4,
+        (action_y + action_height) * 4, G_TX_RENDERTILE, 0, 0,
+        (TOUCH_ACTION_TEX_WIDTH << 10) / rect->size,
+        (TOUCH_ACTION_TEX_HEIGHT << 10) / action_height);
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+static void draw_touch_item_icon(PlayState* play, TexturePtr texture, const TouchHudRect* rect) {
+    s32 x = rect->x;
+    s32 y = rect->y;
+    s32 size = rect->size;
+    s32 step = (32 << 10) / size;
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b,
+                        32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
+                        G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
+                        G_TX_NOLOD, G_TX_NOLOD);
+    // The item HUD is already using the game's right-aligned rect transform.
+    // Keep the proven native texture command so segmented item textures and
+    // their render state behave exactly as they do in the stock HUD.
+    gSPTextureRectangle(OVERLAY_DISP++, x << 2, y << 2,
+        (x + size) << 2, (y + size) << 2,
+        G_TX_RENDERTILE, 0, 0, step, step);
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+static s32 draw_touch_sword(PlayState* play) {
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+    Player* player = GET_PLAYER(play);
+    u8 item = BUTTON_ITEM_EQUIP(CUR_FORM, EQUIP_SLOT_B);
+    TouchHudRect rect;
+    if (item < ITEM_SWORD_KOKIRI || item > ITEM_SWORD_GILDED ||
+        interfaceCtx->unk_21C != 0 || interfaceCtx->unk_222 != 0 ||
+        (player->stateFlags3 & PLAYER_STATE3_1000000) ||
+        (player->transformation != PLAYER_FORM_HUMAN && player->transformation != PLAYER_FORM_FIERCE_DEITY) ||
+        !get_touch_item_rect(EQUIP_SLOT_B, &rect)) {
+        return false;
+    }
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPPipeSync(OVERLAY_DISP++);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->bAlpha);
+    gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+    draw_touch_item_icon(play, interfaceCtx->iconItemSegment, &rect);
+    CLOSE_DISPS(play->state.gfxCtx);
+    return true;
+}
+
+static void draw_touch_ammo(PlayState* play, s16 button, s16 alpha, const TouchHudRect* rect) {
+    u8 item = GET_CUR_FORM_BTN_ITEM(button);
+    s32 capacity;
+    if (item >= ITEM_BOW_FIRE && item <= ITEM_BOW_LIGHT) {
+        item = ITEM_BOW;
+    }
+
+    switch (item) {
+        case ITEM_BOW: capacity = CUR_CAPACITY(UPG_QUIVER); break;
+        case ITEM_BOMB:
+        case ITEM_BOMBCHU: capacity = CUR_CAPACITY(UPG_BOMB_BAG); break;
+        case ITEM_DEKU_STICK: capacity = CUR_CAPACITY(UPG_DEKU_STICKS); break;
+        case ITEM_DEKU_NUT: capacity = CUR_CAPACITY(UPG_DEKU_NUTS); break;
+        case ITEM_POWDER_KEG:
+        case ITEM_PICTOGRAPH_BOX: capacity = 1; break;
+        case ITEM_MAGIC_BEANS: capacity = 20; break;
+        default: return;
+    }
+
+    s32 ammo = item == ITEM_PICTOGRAPH_BOX ? !!CHECK_QUEST_ITEM(QUEST_PICTOGRAPH) : AMMO(item);
+    s32 at_capacity = ammo == capacity && ammo > 0;
+    ammo = CLAMP(ammo, 0, 99);
+
+    s32 size = CLAMP((rect->size + 2) / 4, 3, 8);
+    s32 advance = size - 1;
+    s32 width = ammo >= 10 ? size + advance : size;
+    s32 x = rect->x + (rect->size - width) / 2;
+    s32 y = rect->y + rect->size - size / 2;
+    s32 step = (8 << 10) / size;
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPPipeSync(OVERLAY_DISP++);
+    if (at_capacity) {
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 210, 96, alpha);
+    } else {
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, alpha);
+    }
+
+    if (ammo >= 10) {
+        OVERLAY_DISP = Gfx_DrawTexRectIA8(OVERLAY_DISP, (u8*)gAmmoDigit0Tex + 64 * (ammo / 10),
+                                          8, 8, x, y, size, size, step, step);
+        x += advance;
+    }
+    OVERLAY_DISP = Gfx_DrawTexRectIA8(OVERLAY_DISP, (u8*)gAmmoDigit0Tex + 64 * (ammo % 10),
+                                      8, 8, x, y, size, size, step, step);
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+static u32 draw_touch_c_buttons(PlayState* play) {
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+    const s16 alphas[] = { interfaceCtx->cLeftAlpha, interfaceCtx->cDownAlpha, interfaceCtx->cRightAlpha };
+    u32 equipped_items = 0;
+
+    OPEN_DISPS(play->state.gfxCtx);
+    for (s16 button = EQUIP_SLOT_C_LEFT; button <= EQUIP_SLOT_C_RIGHT; button++) {
+        u8 item = GET_CUR_FORM_BTN_ITEM(button);
+        if (item >= ITEM_F0) {
+            continue;
+        }
+        s16 alpha = alphas[button - EQUIP_SLOT_C_LEFT];
+        gDPPipeSync(OVERLAY_DISP++);
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, alpha);
+        gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+        TexturePtr texture = interfaceCtx->iconItemSegment + 0x1000 * button;
+        TouchHudRect rect;
+        s32 touch = get_touch_item_rect(button, &rect);
+        if (touch) {
+            draw_touch_item_icon(play, texture, &rect);
+            equipped_items |= 1u << button;
+        } else {
+            Interface_DrawItemIconTexture(play, texture, button);
+        }
+        gDPPipeSync(OVERLAY_DISP++);
+        gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
+                          PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
+        if (touch) {
+            draw_touch_ammo(play, button, alpha, &rect);
+        } else {
+            Interface_DrawAmmoCount(play, button, alpha);
+        }
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+    return equipped_items;
+}
 
 RECOMP_PATCH void Interface_Draw(PlayState* play) {
     s32 pad;
@@ -252,6 +552,7 @@ RECOMP_PATCH void Interface_Draw(PlayState* play) {
     f32 minigameCountdownScale;
     s16 counterDigits[4];
     s16 magicAlpha;
+    const bool swap_minimap_and_rupees = recomp_get_swap_minimap_and_rupees();
 
     OPEN_DISPS(play->state.gfxCtx);
 
@@ -301,19 +602,9 @@ RECOMP_PATCH void Interface_Draw(PlayState* play) {
 
         Gfx_SetupDL39_Overlay(play->state.gfxCtx);
 
-        // @recomp Left align and shift left/down for key count, skulltula count, and rupee count
+        // @recomp Left align and shift left/down for the key and skulltula counters.
         gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_LEFT, -margin_reduction * 4, margin_reduction * 4);
         gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_LEFT, -margin_reduction * 4, margin_reduction * 4, -margin_reduction * 4, margin_reduction * 4);
-
-        // Draw Rupee Icon
-        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, sRupeeCounterIconPrimColors[CUR_UPG_VALUE(UPG_WALLET)].r,
-                        sRupeeCounterIconPrimColors[CUR_UPG_VALUE(UPG_WALLET)].g,
-                        sRupeeCounterIconPrimColors[CUR_UPG_VALUE(UPG_WALLET)].b, interfaceCtx->magicAlpha);
-        gDPSetEnvColor(OVERLAY_DISP++, sRupeeCounterIconEnvColors[CUR_UPG_VALUE(UPG_WALLET)].r,
-                       sRupeeCounterIconEnvColors[CUR_UPG_VALUE(UPG_WALLET)].g,
-                       sRupeeCounterIconEnvColors[CUR_UPG_VALUE(UPG_WALLET)].b, 255);
-        OVERLAY_DISP =
-            Gfx_DrawTexRectIA8(OVERLAY_DISP, gRupeeCounterIconTex, 16, 16, 26, 206, 16, 16, 1 << 10, 1 << 10);
 
         switch (play->sceneId) {
             case SCENE_INISIE_N:
@@ -430,6 +721,24 @@ RECOMP_PATCH void Interface_Draw(PlayState* play) {
                 break;
         }
 
+        if (swap_minimap_and_rupees) {
+            // Leave room after the counter for the touch visibility button.
+            s32 rupee_x = (margin_reduction - 26 - 66 - 18) * 4;
+            gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT,
+                            rupee_x, margin_reduction * 4, rupee_x, margin_reduction * 4);
+        }
+
+        // Draw the rupee icon and counter together, regardless of the dungeon counters.
+        Gfx_SetupDL39_Overlay(play->state.gfxCtx);
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, sRupeeCounterIconPrimColors[CUR_UPG_VALUE(UPG_WALLET)].r,
+                        sRupeeCounterIconPrimColors[CUR_UPG_VALUE(UPG_WALLET)].g,
+                        sRupeeCounterIconPrimColors[CUR_UPG_VALUE(UPG_WALLET)].b, interfaceCtx->magicAlpha);
+        gDPSetEnvColor(OVERLAY_DISP++, sRupeeCounterIconEnvColors[CUR_UPG_VALUE(UPG_WALLET)].r,
+                       sRupeeCounterIconEnvColors[CUR_UPG_VALUE(UPG_WALLET)].g,
+                       sRupeeCounterIconEnvColors[CUR_UPG_VALUE(UPG_WALLET)].b, 255);
+        OVERLAY_DISP =
+            Gfx_DrawTexRectIA8(OVERLAY_DISP, gRupeeCounterIconTex, 16, 16, 26, 206, 16, 16, 1 << 10, 1 << 10);
+
         // Rupee Counter
         gDPPipeSync(OVERLAY_DISP++);
         gDPSetCombineLERP(OVERLAY_DISP++, 0, 0, 0, PRIMITIVE, TEXEL0, 0, PRIMITIVE, 0, 0, 0, 0, PRIMITIVE, TEXEL0, 0,
@@ -492,11 +801,14 @@ RECOMP_PATCH void Interface_Draw(PlayState* play) {
             draw_autosave_icon(play);
         }
 
-        // @recomp Right align and shift right/down for minimap
-        gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT,
-            -(SCREEN_WIDTH - margin_reduction) * 4, margin_reduction * 4,
-            -(SCREEN_WIDTH - margin_reduction) * 4, margin_reduction * 4);
-        gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, -(SCREEN_WIDTH - margin_reduction) * 4, margin_reduction * 4);
+        // Match the map rectangles and the arrow geometry to the same screen edge.
+        s32 map_origin = swap_minimap_and_rupees ? G_EX_ORIGIN_LEFT : G_EX_ORIGIN_RIGHT;
+        s32 map_x = swap_minimap_and_rupees
+            ? -(SCREEN_WIDTH - 128 + margin_reduction) * 4
+            : -(SCREEN_WIDTH - margin_reduction) * 4;
+        gEXSetRectAlign(OVERLAY_DISP++, map_origin, map_origin,
+                        map_x, margin_reduction * 4, map_x, margin_reduction * 4);
+        gEXSetViewportAlign(OVERLAY_DISP++, map_origin, map_x, margin_reduction * 4);
         Interface_SetOrthoView(interfaceCtx);
 
         Minimap_Draw(play);
@@ -510,27 +822,56 @@ RECOMP_PATCH void Interface_Draw(PlayState* play) {
             Target_Draw(&play->actorCtx.targetCtx, play);
         }
 
-        // @recomp Right align and shift right/up for equipped items and buttons
-        gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT,
-            -(SCREEN_WIDTH - margin_reduction) * 4, -margin_reduction * 4,
-            -(SCREEN_WIDTH - margin_reduction) * 4, -margin_reduction * 4);
-        gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, -(SCREEN_WIDTH - margin_reduction) * 4, -margin_reduction * 4);
-        gEXSetScissorAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT, -(SCREEN_WIDTH - margin_reduction), -margin_reduction, -(SCREEN_WIDTH - margin_reduction), -margin_reduction, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-        Interface_SetOrthoView(interfaceCtx);
+        s32 touch_hud_active = place_touch_hud_item_slots();
+        if (touch_hud_active && gSaveContext.screenScaleFlag) {
+            // The day transition scales the game framebuffer but keeps Android controls fixed.
+            recomp_set_touch_hud_content(1u << 10);
+        } else {
+            // @recomp Right align and shift right/up for equipped items and buttons
+            gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT,
+                -(SCREEN_WIDTH - margin_reduction) * 4, -margin_reduction * 4,
+                -(SCREEN_WIDTH - margin_reduction) * 4, -margin_reduction * 4);
+            gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, -(SCREEN_WIDTH - margin_reduction) * 4, -margin_reduction * 4);
+            gEXSetScissorAlign(OVERLAY_DISP++, G_EX_ORIGIN_RIGHT, G_EX_ORIGIN_RIGHT, -(SCREEN_WIDTH - margin_reduction), -margin_reduction, -(SCREEN_WIDTH - margin_reduction), -margin_reduction, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+            Interface_SetOrthoView(interfaceCtx);
 
-        Gfx_SetupDL39_Overlay(play->state.gfxCtx);
+            Gfx_SetupDL39_Overlay(play->state.gfxCtx);
 
-        Interface_DrawItemButtons(play);
+            if (!touch_hud_active) {
+                Interface_DrawItemButtons(play);
+            }
+            draw_dpad(play);
 
-        if (player->transformation == GET_PLAYER_FORM) {
-            Interface_DrawBButtonIcons(play);
+            bool b_action_visible = false;
+            if (player->transformation == GET_PLAYER_FORM) {
+                TouchHudRect b_rect;
+                const u8* b_action = touch_hud_active ? touch_b_action_texture(play) : NULL;
+                if (b_action != NULL && get_touch_item_rect(EQUIP_SLOT_B, &b_rect)) {
+                    draw_touch_hud_action(play, &b_rect, b_action, interfaceCtx->bAlpha);
+                    b_action_visible = interfaceCtx->bAlpha > 0;
+                } else if (!draw_touch_sword(play)) {
+                    Interface_DrawBButtonIcons(play);
+                }
+            }
+            u32 equipped_items = 0;
+            if (touch_hud_active) {
+                equipped_items = draw_touch_c_buttons(play);
+            } else {
+                Interface_DrawCButtonIcons(play);
+            }
+            draw_dpad_icons(play);
+            publish_touch_hud_content(play, touch_hud_active, equipped_items, b_action_visible);
+
+            TouchHudRect action_rect;
+            if (touch_hud_active && get_touch_item_rect(9, &action_rect)) {
+                draw_touch_hud_action(play, &action_rect, touch_a_action_texture(play), interfaceCtx->aAlpha);
+            } else {
+                Interface_DrawAButton(play);
+            }
+
+            // @recomp Adjust any scissors to cover the whole screen
+            gEXSetScissorAlign(OVERLAY_DISP++, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, -margin_reduction, -SCREEN_WIDTH, margin_reduction, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
         }
-        Interface_DrawCButtonIcons(play);
-
-        Interface_DrawAButton(play);
-
-        // @recomp Adjust any scissors to cover the whole screen
-        gEXSetScissorAlign(OVERLAY_DISP++, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, -margin_reduction, -SCREEN_WIDTH, margin_reduction, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
         // @recomp Move the item being equipped from the center of the screen to the right edge as the timer counts down
         if ((pauseCtx->state == PAUSE_STATE_MAIN) && ((pauseCtx->mainState == PAUSE_MAIN_STATE_EQUIP_ITEM) ||
@@ -608,12 +949,19 @@ RECOMP_PATCH void Interface_Draw(PlayState* play) {
                                                       sMinigameCountdownTexWidths[sp2CE], 32, 0);
                 }
             } else {
-                // @recomp Use normal alignment and shift down for clock
-                gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, 0, margin_reduction * 4, 0, margin_reduction * 4);
-                gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, 0, margin_reduction * 4);
-                Interface_SetOrthoView(interfaceCtx);
-
-                Interface_DrawClock(play);
+                if (recomp_get_clock_style() == 1) {
+                    // The 3DS clock uses fixed 320x240 overlay coordinates.
+                    gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, 0, 0, 0, 0);
+                    gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, 0, 0);
+                    Interface_SetOrthoView(interfaceCtx);
+                    Recomp_Draw3DSClock(play);
+                } else {
+                    // @recomp Use normal alignment and shift down for the original clock.
+                    gEXSetRectAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, 0, margin_reduction * 4, 0, margin_reduction * 4);
+                    gEXSetViewportAlign(OVERLAY_DISP++, G_EX_ORIGIN_NONE, 0, margin_reduction * 4);
+                    Interface_SetOrthoView(interfaceCtx);
+                    Interface_DrawClock(play);
+                }
             }
         }
         

@@ -1,6 +1,6 @@
 @use 'sass:math';
 
-$scrollbar-width: 12;
+$scrollbar-width: 28;
 
 @mixin _set-scroll-size($size-key) {
     #{$size-key}: space($scrollbar-width);
@@ -15,7 +15,7 @@ $scrollbar-width: 12;
 }
 
 scrollbarvertical,scrollbarhorizontal {
-    margin: 0;
+    margin: space(4);
     border: 0;
     
     slidertrack {
@@ -24,7 +24,7 @@ scrollbarvertical,scrollbarhorizontal {
     }
     
     sliderbar {
-        border-radius: space(math.div($scrollbar-width, 2) - 1);
+        border-radius: space(4);
         background: $color-primary-l;
         opacity: 0.1;
 
@@ -45,8 +45,17 @@ scrollbarvertical,scrollbarhorizontal {
 
 scrollbarvertical {
     @include _set-scroll-size(width);
+    margin-left: 0;
+
+    sliderbar {
+        min-height: space(56);
+    }
 }
 
 scrollbarhorizontal {
     @include _set-scroll-size(height);
+
+    sliderbar {
+        min-width: space(56);
+    }
 }

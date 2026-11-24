@@ -45,50 +45,44 @@ set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
 add_compile_definitions(HLSL_CPU)
 
-set(ZELDA_HOST_FILE_TO_C "file_to_c" CACHE FILEPATH "Host file_to_c executable used by CMake custom commands.")
+option(ZELDA_ANDROID_RUNTIME "Build the upstream runtime as an SDLActivity shared library." OFF)
+option(ZELDA_ANDROID_LEGACY_MIGRATION_TOOLS "Expose manual legacy data migration controls." OFF)
+set(ZELDA_HOST_FILE_TO_C "" CACHE FILEPATH "Host file_to_c executable for cross builds.")
 
-if (CMAKE_SYSTEM_NAME MATCHES "Android")
-    option(ZELDA_ANDROID_SHELL_ONLY "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
-    option(ZELDA_ANDROID_SDL_LIFECYCLE_PROBE "Build the SDL lifecycle probe as Android libmain.so." OFF)
-    option(ZELDA_ANDROID_RUNTIME_APK "Build the real Android runtime as SDLActivity libmain.so." ON)
-else()
-    option(ZELDA_ANDROID_SHELL_ONLY "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
-    option(ZELDA_ANDROID_SDL_LIFECYCLE_PROBE "Build the SDL lifecycle probe as Android libmain.so." OFF)
-    option(ZELDA_ANDROID_RUNTIME_APK "Build the real Android runtime as SDLActivity libmain.so." OFF)
-endif()
-
-if (ZELDA_ANDROID_SHELL_ONLY)
-    if (NOT CMAKE_SYSTEM_NAME MATCHES "Android")
-        message(FATAL_ERROR "ZELDA_ANDROID_SHELL_ONLY is only supported for Android builds.")
-    endif()
-
-    if (NOT ZELDA_ANDROID_SDL_LIFECYCLE_PROBE)
-        message(FATAL_ERROR "ZELDA_ANDROID_SHELL_ONLY requires -DZELDA_ANDROID_SDL_LIFECYCLE_PROBE=ON.")
-    endif()
-
-    find_package(SDL2 REQUIRED)
-
-    add_library(main SHARED
-        ${CMAKE_SOURCE_DIR}/src/android/sdl_lifecycle_probe.cpp
+if (ANDROID AND ZELDA_ANDROID_RUNTIME)
+    # Keep local workspace paths out of diagnostics, debug data, and packaged binaries.
+    add_compile_options(
+        "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
+        "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}=."
     )
-    target_include_directories(main PRIVATE ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(main PRIVATE SDL2::SDL2 android log)
 
-    return()
-endif()
+    if (NOT ZELDA_HOST_FILE_TO_C)
+        message(FATAL_ERROR "ZELDA_HOST_FILE_TO_C is required for an Android runtime build.")
+    endif()
+    add_executable(file_to_c IMPORTED GLOBAL)
+    set_property(TARGET file_to_c PROPERTY IMPORTED_LOCATION "${ZELDA_HOST_FILE_TO_C}")
 
-if (RECOMP_FLATPAK)
-    add_compile_definitions(RECOMP_FLATPAK)
-endif()
-
-if (CMAKE_SYSTEM_NAME MATCHES "Android" AND NOT TARGET nfd)
     add_library(nfd STATIC ${CMAKE_SOURCE_DIR}/src/android/nfd_android_stub.cpp)
     target_include_directories(nfd PUBLIC
         ${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/nativefiledialog-extended/src/include
     )
 endif()
 
+if (RECOMP_FLATPAK)
+    add_compile_definitions(RECOMP_FLATPAK)
+endif()
+
+if (ANDROID AND ZELDA_ANDROID_RUNTIME)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/lib/adrenotools ${CMAKE_BINARY_DIR}/adrenotools)
+endif()
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
+
+if (ANDROID AND ZELDA_ANDROID_RUNTIME)
+    target_include_directories(rt64 PRIVATE ${CMAKE_SOURCE_DIR}/lib/adrenotools/include)
+    target_compile_definitions(rt64 PRIVATE ZELDA_ANDROID_ADRENOTOOLS=1)
+endif()
 
 # set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
@@ -159,37 +153,39 @@ if(NOT DEFINED PATCHES_LD)
     set(PATCHES_LD ld.lld)
 endif()
 
-if (NOT (CMAKE_SYSTEM_NAME MATCHES "Android" AND ZELDA_ANDROID_RUNTIME_APK))
+if (NOT (ANDROID AND ZELDA_ANDROID_RUNTIME))
     add_custom_target(PatchesBin
         COMMAND ${CMAKE_COMMAND} -E env CC=${PATCHES_C_COMPILER} LD=${PATCHES_LD} make
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/patches
         BYPRODUCTS ${CMAKE_SOURCE_DIR}/patches/patches.elf
     )
 
-    # Generate patches_bin.c from patches.bin
-    add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c
-        COMMAND ${ZELDA_HOST_FILE_TO_C} ${CMAKE_SOURCE_DIR}/patches/patches.bin mm_patches_bin ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.h
-        DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.bin
-    )
+# Generate patches_bin.c from patches.bin
+add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c
+    COMMAND file_to_c ${CMAKE_SOURCE_DIR}/patches/patches.bin mm_patches_bin ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.h
+    DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.bin
+)
 
-    # Recompile patches elf into patches.c and patches.bin
-    add_custom_command(OUTPUT
-                           ${CMAKE_SOURCE_DIR}/patches/patches.bin
-                           ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches.c
-                           ${CMAKE_SOURCE_DIR}/RecompiledPatches/recomp_overlays.inl
-                           ${CMAKE_SOURCE_DIR}/RecompiledPatches/funcs.h
-                       # TODO: Look into why modifying patches requires two builds to take
-                       COMMAND ./N64Recomp patches.toml
-                       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                       DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.elf
-    )
+# Recompile patches elf into patches.c and patches.bin
+add_custom_command(OUTPUT
+                       ${CMAKE_SOURCE_DIR}/patches/patches.bin
+                       ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches.c
+                       ${CMAKE_SOURCE_DIR}/RecompiledPatches/recomp_overlays.inl
+                       ${CMAKE_SOURCE_DIR}/RecompiledPatches/funcs.h
+                   # TODO: Look into why modifying patches requires two builds to take
+                   COMMAND ./N64Recomp patches.toml
+                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                   DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.elf
+)
 endif()
 
-# Main executable / Android SDLActivity shared library.
-if (CMAKE_SYSTEM_NAME MATCHES "Android" AND ZELDA_ANDROID_RUNTIME_APK)
+# Main executable / SDLActivity entry library.
+if (ANDROID AND ZELDA_ANDROID_RUNTIME)
     add_library(main SHARED)
     set(ZELDA_RECOMP_TARGET main)
-    target_compile_definitions(main PRIVATE ZELDA_ANDROID_RUNTIME_APK=1)
+    if (ZELDA_ANDROID_LEGACY_MIGRATION_TOOLS)
+        target_compile_definitions(main PRIVATE ZELDA_ANDROID_LEGACY_MIGRATION_TOOLS=1)
+    endif()
 else()
     add_executable(Zelda64Recompiled)
     set(ZELDA_RECOMP_TARGET Zelda64Recompiled)
@@ -208,6 +204,8 @@ set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/game/scene_table.cpp
     ${CMAKE_SOURCE_DIR}/src/game/debug.cpp
     ${CMAKE_SOURCE_DIR}/src/game/quicksaving.cpp
+    ${CMAKE_SOURCE_DIR}/src/game/clock_overlay_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/game/save_editor.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_actor_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_data_api.cpp
@@ -225,6 +223,7 @@ set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/ui/ui_mod_details_panel.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_mod_installer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_mod_menu.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/ui_save_editor_config.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_api.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_api_events.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/ui_api_images.cpp
@@ -255,10 +254,11 @@ if (APPLE)
     list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/main/support_apple.mm)
 endif()
 
-if (CMAKE_SYSTEM_NAME MATCHES "Android")
+if (ANDROID AND ZELDA_ANDROID_RUNTIME)
     list(APPEND SOURCES
-        ${CMAKE_SOURCE_DIR}/src/android/android_lifecycle.cpp
+        ${CMAKE_SOURCE_DIR}/src/android/android_file_picker.cpp
         ${CMAKE_SOURCE_DIR}/src/android/android_logging.cpp
+        ${CMAKE_SOURCE_DIR}/src/android/android_touch_controller.cpp
     )
 endif()
 
@@ -306,6 +306,11 @@ elseif (APPLE)
     )
 endif()
 
+if (ANDROID AND ZELDA_ANDROID_RUNTIME)
+    target_compile_options(${ZELDA_RECOMP_TARGET} PRIVATE -mbranch-protection=standard)
+    target_link_options(${ZELDA_RECOMP_TARGET} PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
+
 if (WIN32)
     include(FetchContent)
 
@@ -329,15 +334,15 @@ if (WIN32)
     )
 
     # Copy SDL2 and dxc DLLs to output folder as post build step
-    add_custom_command(TARGET Zelda64Recompiled POST_BUILD
+    add_custom_command(TARGET ${ZELDA_RECOMP_TARGET} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${sdl2_SOURCE_DIR}/lib/x64/SDL2.dll"
             "${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxil.dll"
             "${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxcompiler.dll"
-            $<TARGET_FILE_DIR:Zelda64Recompiled>)
+            $<TARGET_FILE_DIR:${ZELDA_RECOMP_TARGET}>)
 
     set_target_properties(
-        Zelda64Recompiled
+        ${ZELDA_RECOMP_TARGET}
         PROPERTIES
             LINK_FLAGS_DEBUG "/SUBSYSTEM:CONSOLE"
             LINK_FLAGS_RELEASE "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
@@ -368,7 +373,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
 
     # Generate icon_bytes.c from the app icon PNG.
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
-        COMMAND ${ZELDA_HOST_FILE_TO_C} ${CMAKE_SOURCE_DIR}/icons/512.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
+        COMMAND file_to_c ${CMAKE_SOURCE_DIR}/icons/512.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
         DEPENDS ${CMAKE_SOURCE_DIR}/icons/512.png
     )
     target_sources(${ZELDA_RECOMP_TARGET} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c)
@@ -394,11 +399,22 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-if (CMAKE_SYSTEM_NAME MATCHES "Android")
+if (ANDROID AND ZELDA_ANDROID_RUNTIME)
     find_package(SDL2 REQUIRED)
-    add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
-    target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE SDL2::SDL2 android log vulkan)
+    find_package(Freetype REQUIRED)
+    add_compile_definitions(RT64_SDL_WINDOW_VULKAN)
+    target_include_directories(${ZELDA_RECOMP_TARGET} PRIVATE ${SDL2_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+    target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE SDL2::SDL2 ${FREETYPE_LIBRARIES} android log vulkan adrenotools)
+    add_dependencies(${ZELDA_RECOMP_TARGET} hook_impl main_hook file_redirect_hook gsl_alloc_hook)
+    if (ZELDA_ANDROID_EXTRA_JNI_LIBS_DIR)
+        add_custom_command(TARGET ${ZELDA_RECOMP_TARGET} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${ZELDA_ANDROID_EXTRA_JNI_LIBS_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:hook_impl> ${ZELDA_ANDROID_EXTRA_JNI_LIBS_DIR}/
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:main_hook> ${ZELDA_ANDROID_EXTRA_JNI_LIBS_DIR}/
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:file_redirect_hook> ${ZELDA_ANDROID_EXTRA_JNI_LIBS_DIR}/
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:gsl_alloc_hook> ${ZELDA_ANDROID_EXTRA_JNI_LIBS_DIR}/
+        )
+    endif()
 endif()
 
 target_link_libraries(${ZELDA_RECOMP_TARGET} PRIVATE
@@ -438,9 +454,9 @@ else()
         endif()
     else()
         if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-            set (DXC ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux")
+            set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux")
         else()
-            set (DXC ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-linux")
+            set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-linux")
         endif()
     endif()
 endif()
@@ -448,8 +464,8 @@ endif()
 build_vertex_shader(${ZELDA_RECOMP_TARGET} "shaders/InterfaceVS.hlsl" "shaders/InterfaceVS.hlsl")
 build_pixel_shader(${ZELDA_RECOMP_TARGET} "shaders/InterfacePS.hlsl" "shaders/InterfacePS.hlsl")
 
-# Embed all .nrm files in the "mods" directory
-file(GLOB NRM_FILES "${CMAKE_SOURCE_DIR}/mods/*.nrm")
+# Embed all .nrm files in the "mods" directory.
+file(GLOB NRM_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/mods/*.nrm")
 
 set(GENERATED_NRM_SOURCES "")
 
@@ -460,7 +476,7 @@ foreach(NRM_FILE ${NRM_FILES})
 
     add_custom_command(
         OUTPUT ${OUT_C} ${OUT_H}
-        COMMAND ${ZELDA_HOST_FILE_TO_C} ${NRM_FILE} ${NRM_NAME} ${OUT_C} ${OUT_H}
+        COMMAND file_to_c ${NRM_FILE} ${NRM_NAME} ${OUT_C} ${OUT_H}
         DEPENDS ${NRM_FILE}
     )
 

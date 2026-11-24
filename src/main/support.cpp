@@ -1,94 +1,47 @@
 #include "zelda_support.h"
 #include <SDL.h>
-#include <cstdlib>
-#if !defined(__ANDROID__)
 #include "nfd.h"
-#else
-#include <SDL_system.h>
-#include <android/log.h>
-#include <jni.h>
-#include <mutex>
-#include <utility>
-#endif
+#include <cstdlib>
 #include "RmlUi/Core.h"
+
+#if defined(__ANDROID__)
+#include "../android/android_file_picker.h"
+#include <SDL_system.h>
+#include <jni.h>
+#endif
+
+namespace {
+#if defined(__ANDROID__)
+bool call_android_activity_method(const char* method_name) {
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
+    if (env == nullptr || activity == nullptr) {
+        return false;
+    }
+
+    jclass activity_class = env->GetObjectClass(activity);
+    jmethodID method = activity_class == nullptr
+        ? nullptr
+        : env->GetMethodID(activity_class, method_name, "()V");
+    if (method != nullptr) {
+        env->CallVoidMethod(activity, method);
+    }
+
+    const bool succeeded = method != nullptr && !env->ExceptionCheck();
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+    }
+    if (activity_class != nullptr) {
+        env->DeleteLocalRef(activity_class);
+    }
+    env->DeleteLocalRef(activity);
+    return succeeded;
+}
+#endif
+}
 
 namespace zelda64 {
     // MARK: - Internal Helpers
-#if defined(__ANDROID__)
-    namespace {
-        std::mutex file_dialog_mutex;
-        std::function<void(bool, const std::filesystem::path&)> file_dialog_callback;
-        std::function<void(bool, const std::list<std::filesystem::path>&)> file_dialog_multiple_callback;
-
-        void finish_android_file_dialog(bool success, const std::filesystem::path& path) {
-            std::function<void(bool, const std::filesystem::path&)> callback;
-            {
-                std::lock_guard lock(file_dialog_mutex);
-                callback = std::move(file_dialog_callback);
-                file_dialog_callback = {};
-            }
-
-            if (callback) {
-                callback(success, path);
-            }
-        }
-
-        bool finish_android_file_dialog_multiple(bool success, const std::list<std::filesystem::path>& paths) {
-            std::function<void(bool, const std::list<std::filesystem::path>&)> callback;
-            {
-                std::lock_guard lock(file_dialog_mutex);
-                callback = std::move(file_dialog_multiple_callback);
-                file_dialog_multiple_callback = {};
-            }
-
-            if (callback) {
-                callback(success, paths);
-                return true;
-            }
-            return false;
-        }
-
-        bool launch_android_file_dialog(const char* method_name) {
-            JNIEnv* env = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
-            jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
-            if (env == nullptr || activity == nullptr) {
-                __android_log_print(ANDROID_LOG_WARN, "ZeldaFileDialog", "Unable to access SDL Android activity");
-                if (activity != nullptr) {
-                    env->DeleteLocalRef(activity);
-                }
-                return false;
-            }
-
-            jclass activity_class = env->GetObjectClass(activity);
-            if (activity_class == nullptr) {
-                __android_log_print(ANDROID_LOG_WARN, "ZeldaFileDialog", "Unable to resolve activity class");
-                env->DeleteLocalRef(activity);
-                return false;
-            }
-
-            jmethodID open_method = env->GetStaticMethodID(activity_class, method_name, "()V");
-            if (open_method == nullptr) {
-                __android_log_print(ANDROID_LOG_WARN, "ZeldaFileDialog", "Unable to resolve %s", method_name);
-                env->DeleteLocalRef(activity_class);
-                env->DeleteLocalRef(activity);
-                return false;
-            }
-
-            env->CallStaticVoidMethod(activity_class, open_method);
-            const bool ok = !env->ExceptionCheck();
-            if (!ok) {
-                env->ExceptionDescribe();
-                env->ExceptionClear();
-            }
-
-            env->DeleteLocalRef(activity_class);
-            env->DeleteLocalRef(activity);
-            return ok;
-        }
-    }
-#endif
-
-#if !defined(__ANDROID__)
     void perform_file_dialog_operation(const std::function<void(bool, const std::filesystem::path&)>& callback) {
         nfdnchar_t* native_path = nullptr;
         nfdresult_t result = NFD_OpenDialogN(&native_path, nullptr, 0, nullptr);
@@ -126,24 +79,21 @@ namespace zelda64 {
 
         callback(success, paths);
     }
-#endif
 
     // MARK: - Public API
 
     std::filesystem::path get_program_path() {
 #if defined(__ANDROID__)
         if (const char* program_path = std::getenv("APP_PROGRAM_PATH")) {
-            return std::filesystem::path{program_path};
+            return program_path;
         }
         return "";
-#else
-#if defined(__APPLE__)
+#elif defined(__APPLE__)
         return get_bundle_resource_directory();
 #elif defined(__linux__) && defined(RECOMP_FLATPAK)
         return "/app/bin";
 #else
         return "";
-#endif
 #endif
     }
 
@@ -152,19 +102,8 @@ namespace zelda64 {
     }
 
     void open_file_dialog(std::function<void(bool success, const std::filesystem::path& path)> callback) {
-#ifdef __ANDROID__
-        {
-            std::lock_guard lock(file_dialog_mutex);
-            if (file_dialog_callback) {
-                callback(false, {});
-                return;
-            }
-            file_dialog_callback = std::move(callback);
-        }
-
-        if (!launch_android_file_dialog("openFileDialog")) {
-            finish_android_file_dialog(false, {});
-        }
+#if defined(__ANDROID__)
+        android::open_file_picker(std::move(callback));
 #elif defined(__APPLE__)
         dispatch_on_ui_thread([callback]() {
             perform_file_dialog_operation(callback);
@@ -174,26 +113,79 @@ namespace zelda64 {
 #endif
     }
 
-    void open_file_dialog_multiple(std::function<void(bool success, const std::list<std::filesystem::path>& paths)> callback) {
-#ifdef __ANDROID__
-        {
-            std::lock_guard lock(file_dialog_mutex);
-            if (file_dialog_multiple_callback) {
-                callback(false, {});
-                return;
-            }
-            file_dialog_multiple_callback = std::move(callback);
-        }
+    void open_json_file_dialog(std::function<void(bool success, const std::filesystem::path& path)> callback) {
+        open_file_dialog(std::move(callback));
+    }
 
-        if (!launch_android_file_dialog("openModFileDialog")) {
-            finish_android_file_dialog_multiple(false, {});
-        }
+    void open_file_dialog_multiple(std::function<void(bool success, const std::list<std::filesystem::path>& paths)> callback) {
+#if defined(__ANDROID__)
+        android::open_mod_file_picker(std::move(callback));
 #elif defined(__APPLE__)
         dispatch_on_ui_thread([callback]() {
             perform_file_dialog_operation_multiple(callback);
         });
 #else
         perform_file_dialog_operation_multiple(callback);
+#endif
+    }
+
+    void open_driver_file_dialog() {
+#if defined(__ANDROID__)
+        if (!call_android_activity_method("openDriverFilePicker")) {
+            show_error_message_box("GPU driver", "Unable to open the Android file picker.");
+        }
+#else
+        show_error_message_box("GPU driver", "Custom GPU drivers are only available on Android.");
+#endif
+    }
+
+    void clear_custom_driver() {
+#if defined(__ANDROID__)
+        if (!call_android_activity_method("clearCustomDriver")) {
+            show_error_message_box("GPU driver", "Unable to select the system GPU driver.");
+        }
+#else
+        show_error_message_box("GPU driver", "Custom GPU drivers are only available on Android.");
+#endif
+    }
+
+    void open_clock_texture_file_dialog() {
+#if defined(__ANDROID__)
+        if (!call_android_activity_method("openClockTextureFilePicker")) {
+            show_error_message_box("Clock texture pack", "Unable to open the Android file picker.");
+        }
+#else
+        show_error_message_box("Clock texture pack", "Clock texture import is only available on Android.");
+#endif
+    }
+
+    void open_legacy_data_inventory_picker() {
+#if defined(__ANDROID__)
+        if (!call_android_activity_method("openLegacyDataInventoryPicker")) {
+            show_error_message_box("Existing data", "Unable to open the Android folder picker.");
+        }
+#else
+        show_error_message_box("Existing data", "Existing Android data can only be inspected on Android.");
+#endif
+    }
+
+    void open_legacy_data_staging_picker() {
+#if defined(__ANDROID__)
+        if (!call_android_activity_method("openLegacyDataStagingPicker")) {
+            show_error_message_box("Existing data", "Unable to open the Android folder picker.");
+        }
+#else
+        show_error_message_box("Existing data", "Existing Android data can only be staged on Android.");
+#endif
+    }
+
+    void schedule_legacy_data_activation() {
+#if defined(__ANDROID__)
+        if (!call_android_activity_method("scheduleLegacyDataActivation")) {
+            show_error_message_box("Existing data", "Unable to schedule staged-data activation.");
+        }
+#else
+        show_error_message_box("Existing data", "Existing Android data can only be activated on Android.");
 #endif
     }
 
@@ -210,49 +202,3 @@ namespace zelda64 {
 #endif
     }
 }
-
-#if defined(__ANDROID__)
-extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64recomp_ZeldaSDLActivity_nativeOnFileDialogResult(
-    JNIEnv* env,
-    jclass,
-    jboolean success,
-    jstring path) {
-    const char* utf_path = path != nullptr ? env->GetStringUTFChars(path, nullptr) : nullptr;
-    std::filesystem::path selected_path = utf_path != nullptr ? std::filesystem::path{utf_path} : std::filesystem::path{};
-    if (utf_path != nullptr) {
-        env->ReleaseStringUTFChars(path, utf_path);
-    }
-
-    zelda64::finish_android_file_dialog(success == JNI_TRUE, selected_path);
-}
-
-extern "C" __attribute__((visibility("default"))) void Java_io_github_zelda64recomp_ZeldaSDLActivity_nativeOnFileDialogMultipleResult(
-    JNIEnv* env,
-    jclass,
-    jboolean success,
-    jobjectArray paths) {
-    std::list<std::filesystem::path> selected_paths;
-    if (success == JNI_TRUE && paths != nullptr) {
-        jsize count = env->GetArrayLength(paths);
-        for (jsize i = 0; i < count; i++) {
-            jstring path = static_cast<jstring>(env->GetObjectArrayElement(paths, i));
-            const char* utf_path = path != nullptr ? env->GetStringUTFChars(path, nullptr) : nullptr;
-            if (utf_path != nullptr) {
-                selected_paths.emplace_back(std::filesystem::path{utf_path});
-                env->ReleaseStringUTFChars(path, utf_path);
-            }
-            if (path != nullptr) {
-                env->DeleteLocalRef(path);
-            }
-        }
-    }
-
-    bool handled = zelda64::finish_android_file_dialog_multiple(success == JNI_TRUE && !selected_paths.empty(), selected_paths);
-    if (handled) {
-        SDL_setenv("APP_PENDING_MOD_PATHS", "", true);
-    }
-    else {
-        __android_log_print(ANDROID_LOG_INFO, "ZeldaFileDialog", "No live mod picker callback; leaving pending mod paths for startup install");
-    }
-}
-#endif

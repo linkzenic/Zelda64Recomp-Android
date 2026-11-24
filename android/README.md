@@ -1,100 +1,89 @@
-# Android Build Notes
+# Android clean-port workspace
 
-This directory contains the Android Gradle project for the Zelda64 Recompiled Android port.
+This project is a staged Android port built directly on the upstream Zelda64 Recompiled development branch. Each stage must pass on physical devices before the next subsystem is introduced.
 
-## Build
+## Current stage: clean upstream gameplay foundation
 
-From the repository root:
+The separate `game` application now cross-builds the complete upstream Zelda64 Recompiled runtime as an SDLActivity shared library. It includes the freshly generated game and RSP sources, RT64, RmlUi, audio, the upstream launcher, and isolated Linkzenic touch-control, Android mod-import, save-editor, Player Model Manager, Audio API, randomizer-runtime, clock-texture import, and custom Vulkan-driver slices. It does not include a bundled ROM, randomizer mod, or GPU driver; users may install compatible mods and select their own compatible driver archive.
 
-```sh
-ANDROID_HOME="$HOME/Library/Android/sdk" tools/ci/setup_android_deps.sh
-tools/ci/prepare_android_generated_sources.sh
-gradle --no-daemon -p android :app:assembleRelease -PzeldaProbe=false
-```
+The launcher and opening game sequence have been validated on physical Android hardware with stock Vulkan drivers. Android lifecycle recovery, immersive high-refresh presentation, system-document ROM and mod import, 48 kHz stereo audio, physical controller input, touch controls, native touch settings, motion sensors, the embedded Linkzenic save editor, the complete Player Model Manager dependency stack, Audio API, and an end-to-end local randomizer seed have passed on the Odin2 Portal. The same clean APK passes lifecycle recovery, touch input, persisted touch settings, sustained 48 kHz audio, the complete optional randomizer stack, local seed generation, file creation, and generated-seed gameplay on a Galaxy S26 running Android 16 with its stock Adreno 840 driver. Remaining Linkzenic features return in isolated groups so compatibility regressions remain attributable.
 
-Use release APKs for gameplay, FPS, and frame pacing testing. Debug APKs are useful for quick developer checks, but they are not a good baseline for gaming performance.
-
-Release signing is read from environment variables or Gradle properties:
+The randomizer Python sources come from the same pinned `MMRecompAPCppGlue` revision used by Linkzenic 0.6.9. Prepare the default source location before building:
 
 ```sh
-ANDROID_KEYSTORE_PATH=/path/to/release-keystore.jks \
-ANDROID_KEYSTORE_PASSWORD=... \
-ANDROID_KEY_ALIAS=android-release \
-ANDROID_KEY_PASSWORD=... \
-gradle --no-daemon -p android :app:assembleRelease -PzeldaProbe=false
+git clone --recursive https://github.com/RecompRando/MMRecompAPCppGlue.git \
+    build/rando/MMRecompAPCppGlue
+git -C build/rando/MMRecompAPCppGlue checkout --detach \
+    236359fc502eb2f52c47dae0c283fc80c395e971
+git -C build/rando/MMRecompAPCppGlue submodule update --init --recursive
 ```
 
-## GitHub Actions
+Set `ZELDA_RANDO_GLUE_DIR` to use a source tree in a different location.
 
-The `Build Android APK` workflow can be run manually from the Actions tab. It builds a signed release APK by default and uploads it as an artifact when the generated runtime sources are already available to the runner.
-
-GitHub cannot generate those sources by itself without the user's own decompressed ROM input. If the workflow reports missing `RecompiledFuncs`, `rsp`, or `RecompiledPatches` files, generate them locally first with:
+Build it from the repository root with JDK 21 and the Android SDK configured:
 
 ```sh
-tools/ci/prepare_android_generated_sources.sh
+ANDROID_HOME="$HOME/Library/Android/sdk" \
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+gradle -p android :game:assembleDebug
 ```
 
-The workflow needs these repository secrets to sign release APKs:
+The debug APK is written to `android/game/build/outputs/apk/debug/game-debug.apk`. Its package ID is `io.github.zelda64recomp.cleanboot`, so it can be installed alongside the existing Android port. The APK contains program assets and native libraries only; a user-owned ROM must be supplied separately.
 
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
+## Production upgrade
 
-For GitHub-hosted release builds, the workflow also needs access to a private generated-source ZIP because ROM-derived generated sources are not committed to this public repo. Set:
+Build the 1.0 upgrade with `gradle -p android :game:assembleRelease -PzeldaProductionUpgrade=true`.
+The APK uses the published package ID `io.github.zelda64recomp` and version code
+`100`. Configure the original APK signing key through `ANDROID_KEYSTORE_PATH`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
+Without those values the output is unsigned. Verify that the signed APK's
+certificate matches the published 0.6.9 and 0.6.10 APKs before distribution.
 
-- `ZELDA_ANDROID_GENERATED_SOURCES_URL`
-- `ZELDA_ANDROID_GENERATED_SOURCES_TOKEN`, only if the URL needs a bearer token
+Android retains data already stored in the app during an in-place update. On
+first launch after updating, users who stored data in the shared Zelda64 folder
+can select it in the Android folder picker. The import verifies the copied files
+and activates them the next time the app opens. Fresh installs start at the
+normal launcher.
 
-The ZIP should extract these directories at the repository root:
+## Diagnostic probe
 
-```text
-RecompiledFuncs/
-RecompiledPatches/
-rsp/
-```
+The `probe` application contains Android `NativeActivity` glue and builds focused sources directly from RT64 and N64ModernRuntime. It validates the recompiler ABI and scheduler queue, then creates an RT64 interface, device, command queue, swapchain, and framebuffer and presents one frame. It does not link the Zelda game, SDL, the full runtime, mods, audio, or a custom Vulkan driver.
 
-The default probe target and debug runtime APK can still be built for quick SDL lifecycle checks:
+Build it from the repository root:
 
 ```sh
-gradle --no-daemon -p android :app:assembleDebug
+gradle --no-daemon -p android :probe:assembleDebug
 ```
 
-## Required Inputs
+Install and launch it:
 
-- `ANDROID_HOME`, defaulting to `$HOME/Library/Android/sdk`
-- `ANDROID_NDK_HOME`, defaulting to `$ANDROID_HOME/ndk/26.0.10792818`
-- `ZELDA_ANDROID_SDL2_PREFIX`, defaulting to `$HOME/Android/prefixes/SDL2-2.32.10-android-arm64`
-- `ZELDA_ANDROID_FREETYPE_PREFIX`, required for full runtime builds
-
-## Runtime Paths
-
-`ZeldaSDLActivity` extracts program assets from the APK and sets:
-
-- `APP_PROGRAM_PATH` to `<app files>/program`
-- `APP_FOLDER_PATH` to `/sdcard/Zelda64` when storage access is granted
-- `APP_NATIVE_LIBS_PATH` to `<app code cache>/native_mods`
-- `APP_ANDROID_VERSION_NAME` to the APK `versionName`
-
-If storage access is not granted yet, the app temporarily falls back to app-private data storage until the user grants permission.
-
-## Bundled Android Mods
-
-Android-native mod packages live under:
-
-```text
-android/app/src/main/assets/bundled_mods/
+```sh
+adb install -r android/probe/build/outputs/apk/debug/probe-debug.apk
+adb shell am start -n io.github.zelda64recomp.probe/android.app.NativeActivity
+adb logcat -s ZeldaAndroidProbe ZeldaRuntimeProbe ZeldaRt64Probe
 ```
 
-These are copied into `/sdcard/Zelda64/mods` on launch. The current bundled packages are:
+A successful run logs `stage=0 native lifecycle probe started`, `stage=3 success` after the headless runtime checks, and `stage=2 success` after RT64 presents its test frame.
 
-- `ProxyMM_KV.nrm`
-- `ProxyRecomp_KV005.so`
-- `yazmt_mm_playermodelmanager_fsmodels.nrm`
-- `yazmt_mm_playermodelmanager_fsmodels_extlib.so`
+The earlier stock-Vulkan implementation remains in `vulkan_probe.cpp` as the Stage 1 diagnostic. Keeping the raw Vulkan and RT64 paths separate makes regressions attributable to either the platform/driver boundary or RT64 itself.
 
-They are bundled as complete Android-ready mod pairs because desktop native binaries are not compatible with Android. Keeping the packages in the APK prevents users from accidentally replacing the Android `.so` files with Linux or desktop versions from normal mod downloads.
+## Port gates
 
-## Do Not Commit
+1. Native loading and lifecycle
+2. Vulkan instance, device, surface, and swapchain
+3. RT64 test frame without the game runtime
+4. N64ModernRuntime generated-function and scheduler tests
+5. Minimal unmodified Zelda64 Recompiled boot (passed on Odin2 Portal)
+6. Audio and physical input (passed on Odin2 Portal)
+7. Storage and ROM import (passed on Odin2 Portal)
+8. Touch controls and mobile UI (overlay, virtual controller, native settings, and motion sensors passed)
+9. Android-native mod import (system picker and upstream installer passed)
+10. Linkzenic save editor (embedded package and configuration passed)
+11. YAZMT API mods (Core and Global Objects passed)
+12. Player Model Manager, KV, filesystem addon, and rebuilt 16 KiB-compatible native helpers (passed)
+13. Audio API and 16 KiB-safe ARM64 mod patching (passed)
+14. Randomizer Python runtime, Java bridge, local seed generation, session selection, and generated-seed game start (passed)
+15. Samsung Android 16 stock-driver lifecycle, touch input, settings persistence, sustained audio, full randomizer generation, and generated-seed gameplay (passed on Galaxy S26)
+16. Remaining Linkzenic-specific features
 
-Do not commit ROMs, decompressed ROMs, generated recompilation sources from private inputs, APKs, AABs, Gradle output, CMake output, app-private saves, configs, or imported user mods.
+Samsung or model-specific workarounds are not accepted without a reduced test which fails before the change and passes afterward.

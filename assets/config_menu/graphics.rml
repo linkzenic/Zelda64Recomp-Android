@@ -15,7 +15,7 @@
                                 data-checked="res_option"
                                 value="Original"
                                 id="res_240"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_select"
                             />
                             <label class="config-option__tab-label" for="res_240">240p</label>
                             <input type="radio"
@@ -25,7 +25,7 @@
                                 data-checked="res_option"
                                 value="Original2x"
                                 id="res_480"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_select"
                             />
                             <label class="config-option__tab-label" for="res_480">480p</label>
                             <input type="radio"
@@ -35,7 +35,7 @@
                                 data-checked="res_option"
                                 value="720p"
                                 id="res_720"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_select"
                             />
                             <label class="config-option__tab-label" for="res_720">720p</label>
                             <input type="radio"
@@ -45,7 +45,7 @@
                                 data-checked="res_option"
                                 value="1080p"
                                 id="res_1080"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_system"
                             />
                             <label class="config-option__tab-label" for="res_1080">1080p</label>
                             <input type="radio"
@@ -55,9 +55,37 @@
                                 data-checked="res_option"
                                 value="Auto"
                                 id="res_auto_android"
-                                style="nav-up:#tab_graphics; nav-down: #ar_expand"
+                                style="nav-up:#tab_graphics; nav-down: #custom_driver_system"
                             />
                             <label class="config-option__tab-label" for="res_auto_android">Auto</label>
+                        </div>
+                    </div>
+
+                    <div data-if="is_android" class="config-option" data-event-mouseover="set_cur_config_index(1)">
+                        <label class="config-option__title">Custom Driver</label>
+                        <div class="config-option__list">
+                            <button
+                                id="custom_driver_select"
+                                class="config-option__action-label"
+                                data-class-config-option__action-label--selected="android_custom_vulkan_driver_active"
+                                data-event-click="select_gpu_driver"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                style="nav-up:#res_720; nav-down:#ar_original"
+                            >
+                                <div class="button__label">Select driver</div>
+                            </button>
+                            <button
+                                id="custom_driver_system"
+                                class="config-option__action-label"
+                                data-class-config-option__action-label--selected="!android_custom_vulkan_driver_active"
+                                data-event-click="use_system_gpu_driver"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                style="nav-up:#res_1080; nav-down:#ar_expand"
+                            >
+                                <div class="button__label">System driver</div>
+                            </button>
                         </div>
                     </div>
 
@@ -74,7 +102,7 @@
                                 style="nav-up:#tab_graphics; nav-down: #ds_windowed"
                                 data-attr-style="res_option == 'Auto' ? 'nav-up:#tab_graphics; nav-down: #ar_original' : 'nav-up:#tab_graphics; nav-down: #ds_windowed'"
                             />
-                            <label class="config-option__tab-label" for="res_original">Original</label>
+                            <label class="config-option__tab-label" for="res_original">240p</label>
                             <input type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(0)"
@@ -85,7 +113,29 @@
                                 style="nav-up:#tab_graphics; nav-down: #ds_2x"
                                 data-attr-style="res_option == 'Auto' ? 'nav-up:#tab_graphics; nav-down: #ar_expand' : 'nav-up:#tab_graphics; nav-down: #ds_2x'"
                             />
-                            <label class="config-option__tab-label" for="res_2x">Original 2x</label>
+                            <label class="config-option__tab-label" for="res_2x">480p</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="720p"
+                                id="res_720_desktop"
+                                style="nav-up:#tab_graphics; nav-down: #ds_4x"
+                                data-attr-style="res_option == 'Auto' ? 'nav-up:#tab_graphics; nav-down: #ar_expand' : 'nav-up:#tab_graphics; nav-down: #ds_4x'"
+                            />
+                            <label class="config-option__tab-label" for="res_720_desktop">720p</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="resolution"
+                                data-checked="res_option"
+                                value="1080p"
+                                id="res_1080_desktop"
+                                style="nav-up:#tab_graphics; nav-down: #ds_4x"
+                                data-attr-style="res_option == 'Auto' ? 'nav-up:#tab_graphics; nav-down: #ar_expand' : 'nav-up:#tab_graphics; nav-down: #ds_4x'"
+                            />
+                            <label class="config-option__tab-label" for="res_1080_desktop">1080p</label>
                             <input type="radio"
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(0)"
@@ -107,7 +157,7 @@
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(1)"
                                 name="downsampling"
-                                data-attrif-disabled="res_option == 'Auto'"
+                                data-attrif-disabled="res_option == 'Auto' || res_option == '720p' || res_option == '1080p'"
                                 data-checked="ds_option"
                                 value="1"
                                 id="ds_windowed"
@@ -118,7 +168,7 @@
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(1)"
                                 name="downsampling"
-                                data-attrif-disabled="res_option == 'Auto'"
+                                data-attrif-disabled="res_option == 'Auto' || res_option == '720p' || res_option == '1080p'"
                                 data-checked="ds_option"
                                 value="2"
                                 id="ds_2x"
@@ -129,7 +179,7 @@
                                 data-event-blur="set_cur_config_index(-1)"
                                 data-event-focus="set_cur_config_index(1)"
                                 name="downsampling"
-                                data-attrif-disabled="res_option == 'Auto'"
+                                data-attrif-disabled="res_option == 'Auto' || res_option == '720p' || res_option == '1080p'"
                                 data-checked="ds_option"
                                 value="4"
                                 id="ds_4x"
@@ -151,7 +201,7 @@
                                 value="Original"
                                 id="ar_original"
                                 style="nav-up: #ds_windowed; nav-down: #wm_windowed"
-                                data-attr-style="is_android ? 'nav-up:#res_240; nav-down: #wm_windowed' : (res_option == 'Auto' ? 'nav-up:#res_original; nav-down: #wm_windowed' : 'nav-up:#ds_windowed; nav-down: #wm_windowed')"
+                                data-attr-style="is_android ? 'nav-up:#custom_driver_select; nav-down: #wm_windowed' : (res_option == 'Auto' ? 'nav-up:#res_original; nav-down: #wm_windowed' : 'nav-up:#ds_windowed; nav-down: #wm_windowed')"
                             />
                             <label class="config-option__tab-label" for="ar_original">Original</label>
                             <input type="radio"
@@ -162,7 +212,7 @@
                                 value="Expand"
                                 id="ar_expand"
                                 style="nav-up: #ds_2x; nav-down: #wm_fullscreen"
-                                data-attr-style="is_android ? 'nav-up:#res_1080; nav-down: #wm_fullscreen' : (res_option == 'Auto' ? 'nav-up:#res_2x; nav-down: #wm_fullscreen' : 'nav-up:#ds_2x; nav-down: #wm_fullscreen')"
+                                data-attr-style="is_android ? 'nav-up:#custom_driver_system; nav-down: #wm_fullscreen' : (res_option == 'Auto' ? 'nav-up:#res_2x; nav-down: #wm_fullscreen' : 'nav-up:#ds_2x; nav-down: #wm_fullscreen')"
                             />
                             <label class="config-option__tab-label" for="ar_expand">Expand</label>
                         </div>
@@ -295,7 +345,7 @@
                                 data-checked="hr_option"
                                 value="Original"
                                 id="hr_original"
-                                style="nav-up: #msaa_none; nav-down: #apply_button"
+                                style="nav-up: #msaa_none; nav-down: #clock_original"
                             />
                             <label class="config-option__tab-label" for="hr_original">Original</label>
                             <input type="radio"
@@ -305,7 +355,7 @@
                                 data-checked="hr_option"
                                 value="Clamp16x9"
                                 id="hr_16_9"
-                                style="nav-up: #msaa_2x; nav-down: #apply_button"
+                                style="nav-up: #msaa_2x; nav-down: #clock_3ds"
                                 data-style-nav-up="msaa2x_supported ? '#msaa_2x' : '#msaa_none'"
                             />
                             <label class="config-option__tab-label" for="hr_16_9">16:9</label>
@@ -316,10 +366,75 @@
                                 data-checked="hr_option"
                                 value="Full"
                                 id="hr_full"
-                                style="nav-up: #msaa_4x; nav-down: #apply_button"
+                                style="nav-up: #msaa_4x; nav-down: #clock_3ds"
                                 data-style-nav-up="msaa4x_supported ? '#msaa_4x' : (msaa2x_supported ? '#msaa_2x' : '#msaa_none')"
                             />
                             <label class="config-option__tab-label" for="hr_full">Expand</label>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)">
+                        <label class="config-option__title">Clock Style</label>
+                        <div class="config-option__list">
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="clock-style"
+                                data-checked="clock_style"
+                                value="Original"
+                                id="clock_original"
+                                style="nav-up: #hr_original; nav-down: #minimap_rupees_original"
+                            />
+                            <label class="config-option__tab-label" for="clock_original">Original</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="clock-style"
+                                data-checked="clock_style"
+                                value="ThreeDS"
+                                id="clock_3ds"
+                                style="nav-up: #hr_16_9; nav-down: #minimap_rupees_swapped"
+                            />
+                            <label class="config-option__tab-label" for="clock_3ds">3DS</label>
+                            <input
+                                data-if="is_android"
+                                type="radio"
+                                data-event-click="select_clock_texture_pack"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="clock-style"
+                                data-checked="clock_style"
+                                value="Import"
+                                id="clock_texture_import"
+                                style="nav-up:#hr_full; nav-down:#minimap_rupees_swapped"
+                            />
+                            <label data-if="is_android" class="config-option__tab-label" for="clock_texture_import">Import</label>
+                        </div>
+                    </div>
+
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(8)">
+                        <label class="config-option__title">Swap Minimap and Rupees</label>
+                        <div class="config-option__list">
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(8)"
+                                name="minimap-rupee-placement"
+                                data-checked="minimap_rupee_placement"
+                                value="Original"
+                                id="minimap_rupees_original"
+                                style="nav-up: #clock_original; nav-down: #apply_button"
+                            />
+                            <label class="config-option__tab-label" for="minimap_rupees_original">Off</label>
+                            <input type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(8)"
+                                name="minimap-rupee-placement"
+                                data-checked="minimap_rupee_placement"
+                                value="Swapped"
+                                id="minimap_rupees_swapped"
+                                style="nav-up: #clock_3ds; nav-down: #apply_button"
+                            />
+                            <label class="config-option__tab-label" for="minimap_rupees_swapped">On</label>
                         </div>
                     </div>
 
@@ -329,13 +444,19 @@
                         Sets the internal render resolution. <b>240p</b> and <b>480p</b> are fastest, <b>720p</b> is balanced, <b>1080p</b> is sharper, and <b>Auto</b> uses the screen size without overshooting it.
                     </p>
                     <p data-if="cur_config_index == 0 && !is_android">
-                        Sets the output resolution of the game. <b>Original</b> matches the game's original 240p resolution. <b>Original 2x</b> will render at 480p. <b>Auto</b> will scale based on the game window's resolution.
+                        Sets the output resolution of the game. <b>240p</b> matches the original Nintendo 64 resolution, <b>480p</b>, <b>720p</b>, and <b>1080p</b> use fixed internal scales, and <b>Auto</b> scales based on the game window's resolution.
                     </p>
                     <p data-if="cur_config_index == 1 && !is_android">
-                        Renders at a higher resolution and scales it down to the output resolution for increased quality. Only available in <b>Original</b> and <b>Original 2x</b> resolution.
+                        Renders at a higher resolution and scales it down to the output resolution for increased quality. Only available in <b>240p</b> and <b>480p</b> modes.
                         <br />
                         <br />
-                        Note: <b>4x</b> downsampling quality at <b>Original 2x</b> resolution may cause performance issues on low end devices, as it will cause the game to render <i>at almost 4k internal resolution</i>.
+                        Note: <b>4x</b> downsampling quality at <b>480p</b> may cause performance issues on low end devices, as it will cause the game to render <i>at almost 4k internal resolution</i>.
+                    </p>
+                    <p data-if="cur_config_index == 1 && is_android">
+                        Selects a custom Vulkan driver package from device storage, or switches back to the system Vulkan driver. Requires restart.
+                        <br />
+                        <br />
+                        <span style="color: #B97DF2;">Current driver: {{android_active_vulkan_driver}}</span>
                     </p>
                     <p data-if="cur_config_index == 2">
                         Sets the horizontal aspect ratio. <b>Original</b> uses the game's original 4:3 aspect ratio. <b>Expand</b> will adjust to match the game window's aspect ratio.
@@ -361,6 +482,15 @@
                     <p data-if="cur_config_index == 6">
                         Adjusts the placement of HUD elements to fit the selected aspect ratio. <b>Expand</b> will use the aspect ratio of the game's output window.
                     </p>
+                    <p data-if="cur_config_index == 7">
+                        <b>Original</b> uses the Nintendo 64 clock. <b>3DS</b> uses the bundled 3DS-style timeline clock.
+                        <br />
+                        <br />
+                        <b>Import</b> accepts 2Ship-style .o2r texture packs. Current pack: <b>{{clock_texture_pack_name}}</b>
+                    </p>
+                    <p data-if="cur_config_index == 8">
+                        Puts the minimap on the lower left and the rupee counter on the lower right.
+                    </p>
                 </div>
             </div>
             <div class="config__footer">
@@ -373,7 +503,7 @@
                         data-attrif-disabled="!options_changed"
                         onclick="apply_options"
                         id="apply_button"
-                        style="nav-up:#hr_original"
+                        style="nav-up:#minimap_rupees_original"
                     >
                         <div class="button__label">Apply<span class="prompt-font-sm">{{gfx_help__apply}}</span></div>
                     </button>

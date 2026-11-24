@@ -1,0 +1,9 @@
+<template name="config-menu__editor">
+    <head>
+    </head>
+    <body>
+        <form class="config__form" id="conf-editor__form">
+            <recomp-save-editor-config id="conf-editor__save-editor-config" />
+        </form>
+    </body>
+</template>

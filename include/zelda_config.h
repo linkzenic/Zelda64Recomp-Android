@@ -84,8 +84,78 @@ namespace zelda64 {
     AutosaveMode get_autosave_mode();
     void set_autosave_mode(AutosaveMode mode);
 
+    enum class SaveAnywhereMode {
+        Off,
+        On,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(zelda64::SaveAnywhereMode, {
+        {zelda64::SaveAnywhereMode::Off, "Off"},
+        {zelda64::SaveAnywhereMode::On, "On"}
+    });
+
+    SaveAnywhereMode get_save_anywhere_mode();
+    void set_save_anywhere_mode(SaveAnywhereMode mode);
+    bool get_save_anywhere_enabled();
+
     AnalogCamMode get_analog_cam_mode();
     void set_analog_cam_mode(AnalogCamMode mode);
+
+    int get_analog_camera_distance();
+    void set_analog_camera_distance(int distance);
+
+    enum class DpadItemsMode {
+        Off,
+        Default,
+        HDStyle,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(zelda64::DpadItemsMode, {
+        {zelda64::DpadItemsMode::Off, "Off"},
+        {zelda64::DpadItemsMode::Default, "Default"},
+        {zelda64::DpadItemsMode::HDStyle, "HD Style"},
+        {zelda64::DpadItemsMode::HDStyle, "HDStyle"},
+        {zelda64::DpadItemsMode::Default, "On"}
+    });
+
+    DpadItemsMode get_dpad_items_mode();
+    void set_dpad_items_mode(DpadItemsMode mode);
+    bool get_dpad_items_enabled();
+
+    enum class AdvancedSettingsMode {
+        Off,
+        On,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(zelda64::AdvancedSettingsMode, {
+        {zelda64::AdvancedSettingsMode::Off, "Off"},
+        {zelda64::AdvancedSettingsMode::On, "On"}
+    });
+
+    AdvancedSettingsMode get_advanced_settings_mode();
+    void set_advanced_settings_mode(AdvancedSettingsMode mode);
+    bool get_advanced_settings_enabled();
+
+    enum class ClockStyle {
+        Original,
+        ThreeDS,
+        Import,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(zelda64::ClockStyle, {
+        {zelda64::ClockStyle::Original, "Original"},
+        {zelda64::ClockStyle::ThreeDS, "ThreeDS"},
+        {zelda64::ClockStyle::Import, "Import"}
+    });
+
+    ClockStyle get_clock_style();
+    void set_clock_style(ClockStyle style);
+    bool get_swap_minimap_and_rupees();
+    void set_swap_minimap_and_rupees(bool swapped);
 
     void open_quit_game_prompt();
 };

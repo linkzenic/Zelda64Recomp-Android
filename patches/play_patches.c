@@ -25,6 +25,7 @@
 #include "overlays/gamestates/ovl_file_choose/z_file_select.h"
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
 #include "debug.h"
+#include "save_editor_builtin.h"
 
 extern Input D_801F6C18;
 
@@ -47,6 +48,7 @@ RECOMP_PATCH void Play_Main(GameState* thisx) {
     // @recomp
     debug_play_update(this);
     controls_play_update(this);
+    save_editor_builtin_play_update(this);
     analog_cam_pre_play_update(this);
     matrix_play_update(this);
     

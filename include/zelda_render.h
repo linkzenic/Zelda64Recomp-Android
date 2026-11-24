@@ -46,6 +46,11 @@ namespace zelda64 {
         bool RT64SamplePositionsSupported();
         bool RT64HighPrecisionFBEnabled();
 
+#if defined(__ANDROID__)
+        void pause_for_background();
+        void resume_from_background();
+#endif
+
         void trigger_texture_pack_update();
         void enable_texture_pack(const recomp::mods::ModContext& context, const recomp::mods::ModHandle& mod);
         void disable_texture_pack(const recomp::mods::ModHandle& mod);

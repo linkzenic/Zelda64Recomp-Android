@@ -27,10 +27,13 @@ namespace recompui {
         checked_style.set_color(Color{ 255, 255, 255, 255 });
         checked_style.set_border_color(Color{ 242, 242, 242, 255 });
         pulsing_style.set_border_color(Color{ 23, 214, 232, 244 });
+        disabled_style.set_color(Color{ 204, 204, 204, 104 });
+        disabled_style.set_border_color(Color{ 242, 242, 242, 32 });
 
         add_style(&hover_style, { hover_state });
         add_style(&checked_style, { checked_state });
         add_style(&pulsing_style, { focus_state });
+        add_style(&disabled_style, { disabled_state });
     }
 
     void RadioOption::set_pressed_callback(std::function<void(uint32_t)> callback) {
@@ -45,24 +48,53 @@ namespace recompui {
         set_style_enabled(checked_state, enable);
     }
 
+    void RadioOption::set_large_touch_style() {
+        set_font_size(28.0f);
+        set_letter_spacing(2.52f);
+        set_line_height(32.0f);
+        set_font_weight(700);
+        set_height(72.0f);
+        set_min_height(72.0f);
+        set_padding_top(18.0f);
+        set_padding_right(22.0f);
+        set_padding_bottom(18.0f);
+        set_padding_left(22.0f);
+        set_border_width(1.1f);
+        set_border_radius(16.0f);
+        set_border_color(Color{ 255, 255, 255, 46 });
+        set_background_color(Color{ 255, 255, 255, 14 });
+        hover_style.set_color(Color{ 242, 242, 242, 255 });
+        hover_style.set_border_color(Color{ 242, 242, 242, 217 });
+        hover_style.set_background_color(Color{ 255, 255, 255, 31 });
+        checked_style.set_color(Color{ 242, 242, 242, 255 });
+        checked_style.set_border_color(Color{ 185, 125, 242, 242 });
+        checked_style.set_background_color(Color{ 185, 125, 242, 72 });
+        pulsing_style.set_border_color(Color{ 23, 214, 232, 244 });
+        disabled_style.set_color(Color{ 204, 204, 204, 104 });
+        disabled_style.set_border_color(Color{ 255, 255, 255, 22 });
+        disabled_style.set_background_color(Color{ 255, 255, 255, 5 });
+        apply_styles();
+    }
+
     void RadioOption::process_event(const Event &e) {
         switch (e.type) {
         case EventType::MouseButton:
-            {
-                const EventMouseButton &mousebutton = std::get<EventMouseButton>(e.variant);
-                if (mousebutton.button == MouseButton::Left && mousebutton.pressed) {
-                    pressed_callback(index);
-                }
-            }
             break;
         case EventType::Click:
-            pressed_callback(index);
+            if (is_enabled()) {
+                pressed_callback(index);
+            }
             break;
         case EventType::Hover:
             set_style_enabled(hover_state, std::get<EventHover>(e.variant).active);
             break;
         case EventType::Enable:
-            set_style_enabled(disabled_state, !std::get<EventEnable>(e.variant).active);
+            {
+                bool enable_active = std::get<EventEnable>(e.variant).active;
+                set_style_enabled(disabled_state, !enable_active);
+                set_cursor(enable_active ? Cursor::Pointer : Cursor::None);
+                set_focusable(enable_active);
+            }
             break;
         case EventType::Focus:
             {
@@ -91,8 +123,19 @@ namespace recompui {
     // Radio
 
     void Radio::set_index_internal(uint32_t index, bool setup, bool trigger_callbacks) {
+        if (options.empty()) {
+            this->index = 0;
+            return;
+        }
+
+        if (index >= options.size()) {
+            index = static_cast<uint32_t>(options.size() - 1);
+        }
+
         if (this->index != index || setup) {
-            options[this->index]->set_selected_state(false);
+            if (this->index < options.size()) {
+                options[this->index]->set_selected_state(false);
+            }
             this->index = index;
             options[index]->set_selected_state(true);
 
@@ -139,7 +182,9 @@ namespace recompui {
         case EventType::Update:
             if (child_focus_queued) {
                 child_focus_queued = false;
-                options[index]->focus();
+                if (!options.empty()) {
+                    options[std::min<size_t>(index, options.size() - 1)]->focus();
+                }
             }
         }
     }
@@ -183,6 +228,14 @@ namespace recompui {
 
     void Radio::set_focus_callback(std::function<void(bool)> callback) {
         focus_callback = callback;
+    }
+
+    void Radio::set_large_touch_style() {
+        set_gap(14.0f);
+        set_align_items(AlignItems::Center);
+        for (RadioOption* option : options) {
+            option->set_large_touch_style();
+        }
     }
     
     void Radio::set_nav_auto(NavDirection dir) {
