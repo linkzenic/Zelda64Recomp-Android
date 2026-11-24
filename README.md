@@ -32,10 +32,9 @@ The Android release APK does not contain game assets. You must provide your own 
 
 - Android 7.0 or newer
 - ARM64 device
-- Vulkan-capable GPU and working Vulkan driver (tested on Snapdragon 8 Gen 2 device, likely requires Adreno)
+- Vulkan-capable GPU and working Vulkan driver 
 - Enough storage for the app data folder, saves, mods, and texture packs
 
-This port has been tested primarily on Snapdragon/Adreno handhelds. If graphics are incorrect, crashes happen at game start, or Vulkan device creation fails, your device may need a newer or different Vulkan driver.
 
 ## What This Android Fork Adds
 
